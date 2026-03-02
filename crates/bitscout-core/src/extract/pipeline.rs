@@ -1,4 +1,6 @@
 use std::path::Path;
+use sha2::{Sha256, Digest};
+use crate::cache::content_cache::ContentCache;
 
 /// Detected file type based on magic bytes and extension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,30 +93,61 @@ pub fn extract_text(path: &Path) -> Result<String, crate::Error> {
     let header = &bytes[..bytes.len().min(16)];
     let file_type = FileType::detect(&filename, header);
 
+    extract_from_bytes(file_type, bytes)
+}
+
+/// Extract text with CAS caching for binary formats.
+/// Plain text files bypass the cache (mmap is already zero-copy).
+pub fn extract_text_cached(path: &Path, cache: &ContentCache) -> Result<String, crate::Error> {
+    let mmap = crate::extract::text::MmapContent::open(path)?;
+    let bytes = mmap.as_bytes();
+
+    if bytes.is_empty() {
+        return Ok(String::new());
+    }
+
+    let filename = path.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let header = &bytes[..bytes.len().min(16)];
+    let file_type = FileType::detect(&filename, header);
+
+    // Plain text: no cache needed, return directly
+    if file_type == FileType::PlainText {
+        return std::str::from_utf8(bytes)
+            .map(|s| s.to_string())
+            .map_err(|e| crate::Error::Extract(format!("UTF-8 decode error: {e}")));
+    }
+
+    // Binary formats: check cache first
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let hash = format!("{:x}", hasher.finalize());
+
+    if let Some(cached) = cache.get(&hash) {
+        return Ok(cached);
+    }
+
+    // Cache miss: extract and cache
+    let extracted = extract_from_bytes(file_type, bytes)?;
+    let _ = cache.put(&hash, &extracted);
+    Ok(extracted)
+}
+
+/// Internal: extract text from bytes based on detected file type.
+fn extract_from_bytes(file_type: FileType, bytes: &[u8]) -> Result<String, crate::Error> {
     match file_type {
         FileType::PlainText => {
             std::str::from_utf8(bytes)
                 .map(|s| s.to_string())
                 .map_err(|e| crate::Error::Extract(format!("UTF-8 decode error: {e}")))
         }
-        FileType::Unknown => {
-            Err(crate::Error::Extract("unsupported file type".into()))
-        }
-        FileType::Gzip => {
-            crate::extract::gz::decompress_gz(bytes)
-        }
-        FileType::Zip => {
-            crate::extract::zip_extract::extract_zip(bytes)
-        }
-        FileType::Docx => {
-            crate::extract::docx::extract_docx(bytes)
-        }
-        FileType::Xlsx => {
-            crate::extract::xlsx::extract_xlsx(bytes)
-        }
-        FileType::Pdf => {
-            crate::extract::pdf::extract_pdf(bytes)
-        }
+        FileType::Gzip => crate::extract::gz::decompress_gz(bytes),
+        FileType::Zip => crate::extract::zip_extract::extract_zip(bytes),
+        FileType::Docx => crate::extract::docx::extract_docx(bytes),
+        FileType::Xlsx => crate::extract::xlsx::extract_xlsx(bytes),
+        FileType::Pdf => crate::extract::pdf::extract_pdf(bytes),
+        FileType::Unknown => Err(crate::Error::Extract("unsupported file type".into())),
     }
 }
 
@@ -174,6 +207,35 @@ mod tests {
 
         let result = extract_text(tmp.path()).unwrap();
         assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn test_cached_extract_returns_same_result() {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use std::io::Write;
+        use tempfile::{NamedTempFile, TempDir};
+
+        let cache_dir = TempDir::new().unwrap();
+        let cache = crate::cache::content_cache::ContentCache::new(cache_dir.path());
+
+        let original = "cached content from gzip";
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(original.as_bytes()).unwrap();
+        let compressed = encoder.finish().unwrap();
+
+        let mut tmp = NamedTempFile::with_suffix(".gz").unwrap();
+        tmp.write_all(&compressed).unwrap();
+        tmp.flush().unwrap();
+
+        // First call: cache miss, extracts fresh
+        let result1 = extract_text_cached(tmp.path(), &cache).unwrap();
+        assert_eq!(result1, original);
+
+        // Second call: cache hit, returns same
+        let result2 = extract_text_cached(tmp.path(), &cache).unwrap();
+        assert_eq!(result2, original);
+        assert_eq!(result1, result2);
     }
 
     #[test]
