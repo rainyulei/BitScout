@@ -112,9 +112,8 @@ pub fn extract_text(path: &Path) -> Result<String, crate::Error> {
         FileType::Xlsx => {
             crate::extract::xlsx::extract_xlsx(bytes)
         }
-        // Pdf — will be implemented in subsequent tasks
-        other => {
-            Err(crate::Error::Extract(format!("{other:?} extraction not yet implemented")))
+        FileType::Pdf => {
+            crate::extract::pdf::extract_pdf(bytes)
         }
     }
 }
