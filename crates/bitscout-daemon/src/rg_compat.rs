@@ -17,11 +17,13 @@ pub struct RgParsedArgs {
     pub multiline: bool,
 }
 
-/// Flags we actively accelerate (handle in our search engine)
+/// Flags we actively accelerate (handle in our search engine).
+/// These are the flags commonly used by AI coding agents (Claude Code, Cursor, etc).
 const ACCELERATED_BOOL: &[&str] = &[
     "--json",
     "-n",
     "--line-number",
+    "--no-line-number",
     "-i",
     "--ignore-case",
     "-l",
@@ -30,6 +32,18 @@ const ACCELERATED_BOOL: &[&str] = &[
     "--count",
     "-U",
     "--multiline",
+    "--multiline-dotall",
+    // Display control — no-ops for us since we always produce the same format
+    "--no-heading",
+    "--heading",
+    "--no-config",
+    "--no-ignore",
+    "--hidden",
+    "-s",
+    "--case-sensitive",
+    "--smart-case",
+    "-S",
+    "--no-messages",
 ];
 const ACCELERATED_VALUE: &[&str] = &[
     "-C",
@@ -42,6 +56,10 @@ const ACCELERATED_VALUE: &[&str] = &[
     "--glob",
     "-t",
     "--type",
+    "--color",
+    "--colors",
+    "-m",
+    "--max-count",
 ];
 
 /// 3-layer rg argument parser.
@@ -151,10 +169,17 @@ fn apply_bool_flag(parsed: &mut RgParsedArgs, flag: &str) {
     match flag {
         "--json" => parsed.json_output = true,
         "-n" | "--line-number" => parsed.line_numbers = true,
+        "--no-line-number" => parsed.line_numbers = false,
         "-i" | "--ignore-case" => parsed.case_insensitive = true,
+        "-s" | "--case-sensitive" => parsed.case_insensitive = false,
+        "-S" | "--smart-case" => {} // treat as default
         "-l" | "--files-with-matches" => parsed.files_only = true,
         "-c" | "--count" => parsed.count_only = true,
         "-U" | "--multiline" => parsed.multiline = true,
+        "--multiline-dotall" => parsed.multiline = true,
+        // Display flags — no-ops since our output format is always flat
+        "--no-heading" | "--heading" | "--no-config" | "--no-ignore"
+        | "--hidden" | "--no-messages" => {}
         _ => {}
     }
 }
@@ -166,6 +191,9 @@ fn apply_value_flag(parsed: &mut RgParsedArgs, flag: &str, value: &str) {
         "-B" | "--before-context" => parsed.before_context = value.parse().unwrap_or(0),
         "-g" | "--glob" => parsed.glob = Some(value.to_string()),
         "-t" | "--type" => parsed.file_type = Some(value.to_string()),
+        // Flags we accept but don't act on (no-ops for our output)
+        "--color" | "--colors" => {} // we never colorize
+        "-m" | "--max-count" => {}    // TODO: implement max-count per file
         _ => {}
     }
 }

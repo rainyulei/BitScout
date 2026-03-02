@@ -880,7 +880,7 @@ mod cat {
     }
 
     #[test]
-    fn appends_trailing_newline_if_missing() {
+    fn preserves_no_trailing_newline() {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("no_newline.txt"), "no trailing newline").unwrap();
 
@@ -891,7 +891,7 @@ mod cat {
         };
         let resp = dispatch(&req);
         assert_eq!(resp.exit_code, 0);
-        assert!(resp.stdout.ends_with('\n'), "stdout: {:?}", resp.stdout);
+        assert_eq!(resp.stdout, "no trailing newline");
     }
 
     #[test]

@@ -113,6 +113,8 @@ pub const RG_FLAGS: &[FlagDef] = &[
     FlagDef { short: None, long: "--line-buffered", kind: FlagKind::Bool },
     FlagDef { short: None, long: "--block-buffered", kind: FlagKind::Bool },
     FlagDef { short: None, long: "--no-mmap", kind: FlagKind::Bool },
+    FlagDef { short: None, long: "--hidden", kind: FlagKind::Bool },
+    FlagDef { short: None, long: "--no-config", kind: FlagKind::Bool },
 ];
 
 /// Lookup a flag by short or long name. Returns its kind.

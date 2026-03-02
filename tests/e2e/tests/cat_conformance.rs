@@ -132,8 +132,7 @@ fn test_cat_empty_file_conformance() {
 
     assert_eq!(real_exit, bs_exit);
     assert!(real_out.is_empty(), "real cat should produce empty output for empty file");
-    // BitScout adds trailing newline for empty files — this is acceptable divergence
-    // as it doesn't affect functionality
+    assert_eq!(real_out, bs_out, "cat empty file output should match exactly");
 }
 
 /// cat file without trailing newline
@@ -150,9 +149,8 @@ fn test_cat_no_trailing_newline_conformance() {
     assert_eq!(real_exit, bs_exit);
     // Real cat preserves exact content (no trailing newline)
     assert_eq!(real_out, "no newline at end");
-    // BitScout appends newline — this is documented and acceptable
-    // as it's consistent behavior for tools that consume line-based output
-    assert!(bs_out.starts_with("no newline at end"));
+    // BitScout now matches real cat exactly
+    assert_eq!(real_out, bs_out, "cat no-trailing-newline should match exactly");
 }
 
 /// cat with relative path

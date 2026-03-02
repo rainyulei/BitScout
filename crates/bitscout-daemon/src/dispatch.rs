@@ -115,36 +115,77 @@ fn handle_grep(req: &SearchRequest) -> SearchResponse {
             PathBuf::from(&req.cwd).join(path_str)
         };
 
-        let engine = match SearchEngine::new(&search_path) {
-            Ok(e) => e,
-            Err(e) => {
-                return SearchResponse {
-                    exit_code: 2,
-                    stdout: String::new(),
-                    stderr: format!("grep: {}: {}", search_path.display(), e),
+        if search_path.is_file() {
+            // Single file search: read and match directly
+            let text = match bitscout_core::extract::pipeline::extract_text(&search_path) {
+                Ok(t) => t,
+                Err(e) => {
+                    return SearchResponse {
+                        exit_code: 2,
+                        stdout: String::new(),
+                        stderr: format!("grep: {}: {}", search_path.display(), e),
+                    }
+                }
+            };
+            let matcher = match bitscout_core::search::matcher::Matcher::with_options(
+                &[&effective_pattern],
+                bitscout_core::search::matcher::MatchOptions {
+                    case_insensitive: parsed.case_insensitive,
+                },
+            ) {
+                Ok(m) => m,
+                Err(e) => {
+                    return SearchResponse {
+                        exit_code: 2,
+                        stdout: String::new(),
+                        stderr: format!("grep: {}", e),
+                    }
+                }
+            };
+            for (idx, line) in text.lines().enumerate() {
+                if matcher.is_match(line.as_bytes()) {
+                    all_results.push(SearchResult {
+                        path: search_path.clone(),
+                        line_number: idx + 1,
+                        line_content: line.to_string(),
+                        context_before: Vec::new(),
+                        context_after: Vec::new(),
+                    });
                 }
             }
-        };
-
-        let opts = SearchOptions {
-            case_insensitive: parsed.case_insensitive,
-            context_lines: 0,
-            max_results: 100_000,
-        };
-
-        match engine.search(&effective_pattern, &opts) {
-            Ok(mut results) => {
-                // Filter by --include glob if specified
-                if let Some(ref glob_pat) = parsed.include_glob {
-                    results.retain(|r| match_glob(glob_pat, r.path.as_path()));
+        } else {
+            // Directory search
+            let engine = match SearchEngine::new(&search_path) {
+                Ok(e) => e,
+                Err(e) => {
+                    return SearchResponse {
+                        exit_code: 2,
+                        stdout: String::new(),
+                        stderr: format!("grep: {}: {}", search_path.display(), e),
+                    }
                 }
-                all_results.extend(results);
-            }
-            Err(e) => {
-                return SearchResponse {
-                    exit_code: 2,
-                    stdout: String::new(),
-                    stderr: format!("grep: {}", e),
+            };
+
+            let opts = SearchOptions {
+                case_insensitive: parsed.case_insensitive,
+                context_lines: 0,
+                max_results: 100_000,
+            };
+
+            match engine.search(&effective_pattern, &opts) {
+                Ok(mut results) => {
+                    // Filter by --include glob if specified
+                    if let Some(ref glob_pat) = parsed.include_glob {
+                        results.retain(|r| match_glob(glob_pat, r.path.as_path()));
+                    }
+                    all_results.extend(results);
+                }
+                Err(e) => {
+                    return SearchResponse {
+                        exit_code: 2,
+                        stdout: String::new(),
+                        stderr: format!("grep: {}", e),
+                    }
                 }
             }
         }
@@ -600,9 +641,6 @@ fn handle_cat(req: &SearchRequest) -> SearchResponse {
                     }
                 } else {
                     output.push_str(&content);
-                    if !content.ends_with('\n') {
-                        output.push('\n');
-                    }
                 }
             }
             Err(e) => {
@@ -935,7 +973,7 @@ mod tests {
     }
 
     #[test]
-    fn test_dispatch_cat_appends_newline_if_missing() {
+    fn test_dispatch_cat_preserves_no_trailing_newline() {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("no_newline.txt"), "no trailing newline").unwrap();
 
@@ -946,7 +984,8 @@ mod tests {
         };
         let resp = dispatch(&req);
         assert_eq!(resp.exit_code, 0);
-        assert!(resp.stdout.ends_with('\n'));
+        // Match real cat behavior: preserve exact content
+        assert_eq!(resp.stdout, "no trailing newline");
     }
 
     #[test]
