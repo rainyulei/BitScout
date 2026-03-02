@@ -121,6 +121,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bitscout-e2e"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "bitscout-memory"
 version = "0.1.0"
 dependencies = [

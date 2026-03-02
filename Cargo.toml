@@ -6,6 +6,7 @@ members = [
     "crates/bitscout-shim",
     "crates/bitscout-cli",
     "crates/bitscout-memory",
+    "tests/e2e",
 ]
 
 [workspace.package]
