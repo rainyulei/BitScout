@@ -109,7 +109,10 @@ pub fn extract_text(path: &Path) -> Result<String, crate::Error> {
         FileType::Docx => {
             crate::extract::docx::extract_docx(bytes)
         }
-        // Xlsx, Pdf — will be implemented in subsequent tasks
+        FileType::Xlsx => {
+            crate::extract::xlsx::extract_xlsx(bytes)
+        }
+        // Pdf — will be implemented in subsequent tasks
         other => {
             Err(crate::Error::Extract(format!("{other:?} extraction not yet implemented")))
         }
