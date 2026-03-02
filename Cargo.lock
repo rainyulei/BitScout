@@ -86,6 +86,7 @@ dependencies = [
  "bitscout-core",
  "bitscout-memory",
  "clap",
+ "libc",
  "serde",
  "serde_json",
 ]
@@ -115,6 +116,7 @@ dependencies = [
  "bitscout-core",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 
@@ -132,6 +134,10 @@ dependencies = [
 [[package]]
 name = "bitscout-shim"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "block-buffer"
