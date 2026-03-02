@@ -180,6 +180,7 @@ name = "bitscout-e2e"
 version = "0.1.0"
 dependencies = [
  "bitscout-core",
+ "bitscout-daemon",
  "flate2",
  "serde_json",
  "tempfile",
