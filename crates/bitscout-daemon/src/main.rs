@@ -1,6 +1,4 @@
 mod server;
-mod rg_flags;
-mod rg_compat;
 
 #[tokio::main]
 async fn main() {

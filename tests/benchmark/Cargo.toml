@@ -1,0 +1,14 @@
+[package]
+name = "bitscout-benchmark"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "benchmark"
+path = "src/main.rs"
+
+[dependencies]
+bitscout-core = { path = "../../crates/bitscout-core" }
+tempfile = "3"
+flate2 = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }

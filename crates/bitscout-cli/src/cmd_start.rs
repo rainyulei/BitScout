@@ -55,7 +55,7 @@ pub fn execute(watch: &str) {
     }
 
     // Copy shim binary as rg, grep, find, fd into shims dir
-    let shim_names = ["rg", "grep", "find", "fd"];
+    let shim_names = ["rg", "grep", "find", "fd", "cat"];
     for name in &shim_names {
         let dest = shims_dir.join(name);
         if let Err(e) = fs::copy(&shim_binary, &dest) {

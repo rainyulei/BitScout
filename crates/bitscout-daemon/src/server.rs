@@ -77,8 +77,9 @@ async fn handle_connection(
                     cache_size_bytes: 0,
                 })
             }
-            DaemonRequest::Search(_) => {
-                DaemonResponse::Error("search not yet implemented".to_string())
+            DaemonRequest::Search(req) => {
+                let response = bitscout_daemon::dispatch::dispatch(&req);
+                DaemonResponse::SearchResult(response)
             }
             DaemonRequest::Shutdown => {
                 // Send Ok response before shutting down

@@ -1,7 +1,7 @@
 mod fallback;
 
 use serde::{Deserialize, Serialize};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 
 // ---------------------------------------------------------------------------
@@ -59,8 +59,17 @@ fn main() {
     let cmd_args: Vec<String> = args.into_iter().skip(1).collect();
 
     // 2. Try the daemon path; on ANY failure fall back to the original command
+    /// Exit code the daemon returns when the shim should fall back to the
+    /// original command (e.g. unsupported flags, unimplemented handler).
+    const FALLBACK_EXIT_CODE: i32 = 200;
+
     match try_daemon(&cmd_name, &cmd_args) {
         Ok(response) => {
+            // Check for fallback signal from daemon
+            if response.exit_code == FALLBACK_EXIT_CODE {
+                fallback::exec_original(&cmd_name, &cmd_args);
+            }
+
             // 4. Print stdout/stderr and exit with the daemon-provided exit code
             if !response.stdout.is_empty() {
                 print!("{}", response.stdout);
@@ -127,17 +136,20 @@ fn try_daemon(cmd_name: &str, args: &[String]) -> Result<SearchResponse, Box<dyn
         cwd,
     });
 
-    let mut payload = serde_json::to_vec(&request)?;
-    payload.push(b'\n');
+    let payload = serde_json::to_vec(&request)?;
+    let len = (payload.len() as u32).to_be_bytes();
+    stream.write_all(&len)?;
     stream.write_all(&payload)?;
     stream.flush()?;
 
-    // 4. Read response (newline-delimited JSON)
-    let mut reader = BufReader::new(&stream);
-    let mut line = String::new();
-    reader.read_line(&mut line)?;
+    // 4. Read response (4-byte big-endian length-prefixed JSON)
+    let mut len_buf = [0u8; 4];
+    stream.read_exact(&mut len_buf)?;
+    let resp_len = u32::from_be_bytes(len_buf) as usize;
+    let mut resp_buf = vec![0u8; resp_len];
+    stream.read_exact(&mut resp_buf)?;
 
-    let response: DaemonResponse = serde_json::from_str(line.trim())?;
+    let response: DaemonResponse = serde_json::from_slice(&resp_buf)?;
 
     match response {
         DaemonResponse::SearchResult(sr) => Ok(sr),
