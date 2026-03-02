@@ -1,1 +1,3 @@
+mod server;
+
 fn main() {}
