@@ -1,0 +1,15 @@
+[package]
+name = "bitscout-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "bitscout"
+path = "src/main.rs"
+
+[dependencies]
+bitscout-core = { path = "../bitscout-core" }
+bitscout-memory = { path = "../bitscout-memory" }
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
