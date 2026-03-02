@@ -100,7 +100,10 @@ pub fn extract_text(path: &Path) -> Result<String, crate::Error> {
         FileType::Unknown => {
             Err(crate::Error::Extract("unsupported file type".into()))
         }
-        // Gzip, Zip, Docx, Xlsx, Pdf — will be implemented in subsequent tasks
+        FileType::Gzip => {
+            crate::extract::gz::decompress_gz(bytes)
+        }
+        // Zip, Docx, Xlsx, Pdf — will be implemented in subsequent tasks
         other => {
             Err(crate::Error::Extract(format!("{other:?} extraction not yet implemented")))
         }
@@ -163,5 +166,25 @@ mod tests {
 
         let result = extract_text(tmp.path()).unwrap();
         assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn test_extract_text_from_gzip_file() {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let original = "search me inside gzip";
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(original.as_bytes()).unwrap();
+        let compressed = encoder.finish().unwrap();
+
+        let mut tmp = NamedTempFile::with_suffix(".gz").unwrap();
+        tmp.write_all(&compressed).unwrap();
+        tmp.flush().unwrap();
+
+        let result = extract_text(tmp.path()).unwrap();
+        assert_eq!(result, original);
     }
 }
