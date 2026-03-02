@@ -103,7 +103,10 @@ pub fn extract_text(path: &Path) -> Result<String, crate::Error> {
         FileType::Gzip => {
             crate::extract::gz::decompress_gz(bytes)
         }
-        // Zip, Docx, Xlsx, Pdf — will be implemented in subsequent tasks
+        FileType::Zip => {
+            crate::extract::zip_extract::extract_zip(bytes)
+        }
+        // Docx, Xlsx, Pdf — will be implemented in subsequent tasks
         other => {
             Err(crate::Error::Extract(format!("{other:?} extraction not yet implemented")))
         }
