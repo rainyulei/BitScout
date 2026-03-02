@@ -1,4 +1,4 @@
-use crate::extract::text::MmapContent;
+use crate::extract::pipeline::extract_text;
 use crate::fs::tree::FileTree;
 use crate::search::matcher::{MatchOptions, Matcher};
 use std::path::{Path, PathBuf};
@@ -58,21 +58,15 @@ impl SearchEngine {
                 break;
             }
 
-            let content = match MmapContent::open(&entry.path) {
-                Ok(c) => c,
-                Err(_) => continue,
+            // Use the content pipeline to extract searchable text
+            let text = match extract_text(&entry.path) {
+                Ok(t) => t,
+                Err(_) => continue, // Skip unsupported/unreadable files
             };
 
-            let bytes = content.as_bytes();
-            if bytes.is_empty() || !matcher.is_match(bytes) {
+            if text.is_empty() || !matcher.is_match(text.as_bytes()) {
                 continue;
             }
-
-            // Split into lines and search each
-            let text = match std::str::from_utf8(bytes) {
-                Ok(t) => t,
-                Err(_) => continue, // skip binary files
-            };
 
             let lines: Vec<&str> = text.lines().collect();
 
@@ -213,5 +207,32 @@ mod tests {
         let results = engine.search("epsilon", &opts).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].line_number, 5);
+    }
+
+    #[test]
+    fn test_search_inside_gzip_file() {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use std::io::Write;
+
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+
+        // Create a plain text file
+        fs::write(root.join("plain.rs"), "fn visible() {}\n").unwrap();
+
+        // Create a gzip file containing searchable text
+        let code = b"fn hidden_in_gz() { let token = verify(); }\n";
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(code).unwrap();
+        let compressed = encoder.finish().unwrap();
+        fs::write(root.join("code.rs.gz"), &compressed).unwrap();
+
+        let engine = SearchEngine::new(root).unwrap();
+        let opts = SearchOptions::default();
+
+        let results = engine.search("hidden_in_gz", &opts).unwrap();
+        assert_eq!(results.len(), 1, "should find match inside gzip: {:?}", results);
+        assert!(results[0].path.to_string_lossy().contains("code.rs.gz"));
     }
 }
