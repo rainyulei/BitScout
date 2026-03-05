@@ -144,7 +144,6 @@ dependencies = [
  "flate2",
  "glob",
  "ignore",
- "memchr",
  "memmap2",
  "pdf-extract",
  "quick-xml",

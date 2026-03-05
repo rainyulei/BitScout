@@ -4,7 +4,6 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-memchr = "2"
 aho-corasick = "1"
 regex = "1"
 memmap2 = "0.9"

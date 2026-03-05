@@ -50,9 +50,7 @@ A cross-service long-term memory module for AI agents. Built on a custom file da
 
 ### Agent Integration
 - [ ] MCP (Model Context Protocol) server mode — expose search as MCP tool
-- [ ] LSP-style daemon mode — persistent process with Unix Domain Socket for session-local caching
 - [ ] Structured JSON output for all commands — machine-readable results for agent consumption
-- [ ] Watch mode — filesystem watcher for incremental index updates
 
 ### Format Support
 - [ ] `.pptx` presentation text extraction

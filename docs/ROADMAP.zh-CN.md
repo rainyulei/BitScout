@@ -50,9 +50,7 @@ BitScout 是一个功能完整的 AI Agent 搜索加速器：
 
 ### Agent 集成
 - [ ] MCP（Model Context Protocol）服务器模式 — 将搜索暴露为 MCP 工具
-- [ ] LSP 式 daemon 模式 — 通过 Unix Domain Socket 的持久化进程，支持会话级缓存
 - [ ] 所有命令的结构化 JSON 输出 — 面向 Agent 的机器可读结果
-- [ ] Watch 模式 — 文件系统监听器实现增量索引更新
 
 ### 格式支持
 - [ ] `.pptx` 演示文稿文本提取
