@@ -8,7 +8,14 @@ pub struct MmapContent {
 
 impl MmapContent {
     pub fn open(path: &Path) -> Result<Self, crate::Error> {
-        let file = File::open(path).map_err(|e| crate::Error::Io(e.to_string()))?;
+        let file = File::open(path).map_err(|e| {
+            let msg = match e.kind() {
+                std::io::ErrorKind::NotFound => "No such file or directory",
+                std::io::ErrorKind::PermissionDenied => "Permission denied",
+                _ => return crate::Error::Io(e.to_string()),
+            };
+            crate::Error::Io(msg.to_string())
+        })?;
         // SAFETY: We assume no other process modifies the file while mapped.
         let mmap = unsafe { Mmap::map(&file) }.map_err(|e| crate::Error::Io(e.to_string()))?;
         Ok(Self { mmap })
