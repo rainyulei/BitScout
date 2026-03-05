@@ -67,22 +67,38 @@ echo ""
 echo "Installed BitScout $TAG to $INSTALL_DIR"
 echo ""
 
-# Check PATH
+# Auto-configure PATH
+SHELL_NAME=$(basename "$SHELL")
+case "$SHELL_NAME" in
+  zsh)  RC="$HOME/.zshrc" ;;
+  bash) RC="$HOME/.bashrc" ;;
+  *)    RC="" ;;
+esac
+
+PATH_LINE="export PATH=\"$INSTALL_DIR:\$PATH\""
+
 case ":$PATH:" in
-  *":$INSTALL_DIR:"*) ;;
+  *":$INSTALL_DIR:"*)
+    echo "PATH already configured."
+    ;;
   *)
-    SHELL_NAME=$(basename "$SHELL")
-    case "$SHELL_NAME" in
-      zsh)  RC="~/.zshrc" ;;
-      bash) RC="~/.bashrc" ;;
-      fish) RC="~/.config/fish/config.fish" ;;
-      *)    RC="your shell profile" ;;
-    esac
-    echo "Run this to add BitScout to your PATH:"
-    echo ""
-    echo "  echo 'export PATH=\"$INSTALL_DIR:\$PATH\"' >> $RC && source $RC"
-    echo ""
+    if [ -n "$RC" ] && [ -f "$RC" ]; then
+      # Only add if not already in rc file
+      if ! grep -qF "$INSTALL_DIR" "$RC" 2>/dev/null; then
+        echo "" >> "$RC"
+        echo "# BitScout" >> "$RC"
+        echo "$PATH_LINE" >> "$RC"
+        echo "PATH auto-configured in $RC"
+      fi
+    else
+      echo "Add this to your shell profile:"
+      echo "  $PATH_LINE"
+    fi
     ;;
 esac
 
-echo "Verify: bitscout --help"
+echo ""
+echo "Done! Restart your shell or run:"
+echo "  source $RC"
+echo ""
+echo "Then verify: bitscout --help"
