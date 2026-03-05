@@ -12,6 +12,20 @@ BitScout is a functional single-binary search accelerator for AI agents with:
 - SHA256 CAS content cache with LRU eviction
 - 100% conformance with original tools, 3-81x faster cold-start
 
+## Next: Persistent Memory (`/memory`) — v0.2
+
+> Primary goal for the next release.
+
+A cross-service long-term memory module for AI agents. Built on a custom file data format — not a key-value database. Provides unified memory that persists across different tools (Claude Code, Cursor, OpenClaw, etc.), so switching agents doesn't mean losing context.
+
+- [ ] Custom memory file format — purpose-built binary format for memory storage and retrieval
+- [ ] Project-local initialization — auto-bootstrap memory context from project structure
+- [ ] Auto-context injection — surface relevant memories during search invocations
+- [ ] Structured read/write — store and recall interface via CLI and programmatic API
+- [ ] Cross-service portability — unified memory layer shared across any coding tool or agent
+- [ ] Novel retrieval algorithm — memory-optimized retrieval beyond keyword matching
+- [ ] RL-based feedback loop — reinforcement learning for memory consolidation and ranking based on agent usage signals
+
 ## Short Term
 
 ### Performance
