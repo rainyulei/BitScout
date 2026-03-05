@@ -147,7 +147,6 @@ crates/
       dispatch.rs      # 统一调度入口
       fs/              # FileTree 文件扫描
   bitscout-cli/        # BusyBox 式 CLI 入口
-  bitscout-memory/     # 持久化知识库存储
 tests/
   e2e/                 # 端到端 conformance + 准确率 + 基准测试
 ```

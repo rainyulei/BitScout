@@ -1,5 +1,3 @@
-mod cmd_memory;
-
 use bitscout_core::dispatch::{self, FALLBACK_EXIT_CODE};
 use clap::{Parser, Subcommand};
 use std::env;
@@ -103,38 +101,12 @@ enum Commands {
         #[arg(long)]
         semantic: bool,
     },
-    /// Manage persistent memory entries
-    Memory {
-        #[command(subcommand)]
-        action: MemoryAction,
-    },
     /// Install symlinks (rg, grep, find, fd, cat → bitscout)
     Install {
         /// Target directory for symlinks (default: ~/.bitscout/shims)
         #[arg(long)]
         dir: Option<String>,
     },
-}
-
-#[derive(Subcommand)]
-enum MemoryAction {
-    /// Save a key-value memory entry
-    Save {
-        key: String,
-        content: String,
-    },
-    /// Remove a memory entry by key
-    Remove {
-        key: String,
-    },
-    /// Search memory entries by query
-    Search {
-        query: String,
-    },
-    /// List all memory entries
-    List,
-    /// Clear all memory entries
-    Clear,
 }
 
 fn main() {
@@ -171,13 +143,6 @@ fn main() {
             }
             process::exit(resp.exit_code);
         }
-        Commands::Memory { action } => match action {
-            MemoryAction::Save { key, content } => cmd_memory::save(&key, &content),
-            MemoryAction::Remove { key } => cmd_memory::remove(&key),
-            MemoryAction::Search { query } => cmd_memory::search(&query),
-            MemoryAction::List => cmd_memory::list(),
-            MemoryAction::Clear => cmd_memory::clear(),
-        },
         Commands::Install { dir } => {
             install_symlinks(dir.as_deref());
         }

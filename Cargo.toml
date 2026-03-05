@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "crates/bitscout-core",
     "crates/bitscout-cli",
-    "crates/bitscout-memory",
     "tests/e2e",
     "tests/benchmark",
 ]

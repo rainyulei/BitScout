@@ -147,7 +147,6 @@ crates/
       dispatch.rs      # Unified dispatch entry point
       fs/              # FileTree scanner
   bitscout-cli/        # BusyBox-style CLI entry point
-  bitscout-memory/     # Persistent knowledge store
 tests/
   e2e/                 # Conformance + accuracy + benchmark tests
 ```

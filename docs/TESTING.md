@@ -7,7 +7,6 @@
 | Test Suite | Tests | Status |
 |---|---|---|
 | bitscout-core unit | 122 | All pass |
-| bitscout-memory unit | 4 | All pass |
 | rg conformance (e2e) | 18 | All pass |
 | grep conformance (e2e) | 8 | All pass |
 | find/fd conformance (e2e) | 8 | All pass |
@@ -15,7 +14,7 @@
 | full conformance (e2e) | 44 | All pass |
 | semantic accuracy (e2e) | 12 | All pass |
 | benchmark modes (e2e) | 3 | All pass |
-| **Total** | **185+** | **All pass** |
+| **Total** | **181+** | **All pass** |
 
 ## Running Tests
 

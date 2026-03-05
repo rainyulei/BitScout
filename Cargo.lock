@@ -129,10 +129,7 @@ name = "bitscout-cli"
 version = "0.1.0"
 dependencies = [
  "bitscout-core",
- "bitscout-memory",
  "clap",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -165,17 +162,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "zip",
-]
-
-[[package]]
-name = "bitscout-memory"
-version = "0.1.0"
-dependencies = [
- "bitscout-core",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
 ]
 
 [[package]]
