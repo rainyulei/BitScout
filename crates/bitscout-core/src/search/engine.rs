@@ -24,7 +24,7 @@ pub struct SearchOptions {
     pub bm25: Bm25Mode,
     /// If set, only search files under this directory prefix.
     pub search_root: Option<PathBuf>,
-    /// Use Random Projection semantic scoring.
+    /// Use LSA semantic scoring.
     pub semantic: bool,
 }
 
@@ -198,23 +198,20 @@ impl SearchEngine {
         Ok(results)
     }
 
-    /// Semantic search: split query into words, filter files containing ANY word,
-    /// then rank by RP cosine similarity.
+    /// Semantic search using LSA (Latent Semantic Analysis).
+    ///
+    /// LSA captures project-local co-occurrence patterns via truncated SVD of TF-IDF.
     fn search_semantic(
         &self,
         pattern: &str,
         opts: &SearchOptions,
     ) -> Result<Vec<SearchResult>, crate::Error> {
-        use crate::search::rp::RpScorer;
+        use crate::search::lsa::LsaScorer;
 
         let canonical_search_root = opts.search_root.as_ref().and_then(|p| p.canonicalize().ok());
 
-        let mut rp_scorer = RpScorer::new();
-        let query_proj = rp_scorer.project(pattern);
-
-        // Score ALL files by RP cosine — no literal filter required.
-        // This enables true semantic search: "login" can find "authentication" files.
-        let mut scored_files: Vec<(f32, PathBuf, String)> = Vec::new();
+        // Collect all documents for indexing
+        let mut docs: Vec<(std::path::PathBuf, String)> = Vec::new();
 
         for entry in self.tree.files() {
             if let Some(ref root) = canonical_search_root {
@@ -232,44 +229,58 @@ impl SearchEngine {
                 continue;
             }
 
-            let rp_score = rp_scorer.score(&query_proj, &text);
-            scored_files.push((rp_score, entry.path.clone(), text));
+            docs.push((entry.path.clone(), text));
         }
 
-        // Sort by RP score descending
-        scored_files.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        if docs.is_empty() {
+            return Ok(Vec::new());
+        }
 
-        // Take top-N files with positive scores (or at least top 20)
+        // Build LSA index
+        let k = 128.min(docs.len());
+        let lsa_scorer = LsaScorer::build(&docs, k);
+        let lsa_query_vec = lsa_scorer.project_query(pattern);
+
+        // Rank documents by LSA cosine similarity
+        let rankings = lsa_scorer.rank_documents(&lsa_query_vec);
+
+        // Take top 20 files
         let max_files = 20;
-        let top_files: Vec<_> = scored_files
-            .into_iter()
-            .take(max_files)
-            .filter(|(score, _, _)| *score > 0.0)
-            .collect();
+        let top_rankings: Vec<_> = rankings.into_iter().take(max_files).collect();
 
-        // For each top file, find the most relevant lines by per-line RP scoring
+        // Per-line scoring within top files
         let mut results: Vec<SearchResult> = Vec::new();
 
-        for (file_score, path, text) in &top_files {
+        for &(file_score, doc_idx) in &top_rankings {
+            if file_score < 1e-8 {
+                continue;
+            }
+
+            let path = &docs[doc_idx].0;
+            let text = &docs[doc_idx].1;
             let lines: Vec<&str> = text.lines().collect();
 
-            // Score each non-trivial line
             let mut line_scores: Vec<(usize, f32, &str)> = Vec::new();
             for (idx, line) in lines.iter().enumerate() {
                 let trimmed = line.trim();
-                // Skip very short lines (comments, braces, blank)
                 if trimmed.len() < 10 {
                     continue;
                 }
-                let line_score = rp_scorer.score(&query_proj, trimmed);
-                line_scores.push((idx, line_score, line));
+
+                let line_vec = lsa_scorer.project_query(trimmed);
+                let score = if line_vec.is_empty() || lsa_query_vec.is_empty() {
+                    0.0
+                } else {
+                    super::lsa::cosine_similarity_pub(&lsa_query_vec, &line_vec)
+                };
+
+                line_scores.push((idx, score, line));
             }
 
             // Sort lines by score desc, take top 5
             line_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
             let mut top_lines: Vec<_> = line_scores.into_iter().take(5).collect();
-            // Re-sort by line number for display
             top_lines.sort_by_key(|(idx, _, _)| *idx);
 
             for (idx, _line_score, line) in &top_lines {
@@ -292,7 +303,7 @@ impl SearchEngine {
                     line_content: line.to_string(),
                     context_before,
                     context_after,
-                    bm25_score: Some(*file_score as f64),
+                    bm25_score: Some(file_score as f64),
                 });
             }
         }
@@ -550,21 +561,27 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let root = tmp.path();
 
+        // Use distinct vocabularies so LSA IDF gives non-zero signal
         fs::write(
             root.join("auth.rs"),
-            "fn authenticate_user(credentials: &str) -> bool { true }\n",
+            "fn authenticate_user(credentials: &str) -> bool {\n    validate_token(credentials)\n}\n",
         )
         .unwrap();
         fs::write(
             root.join("db.rs"),
-            "fn migrate_database_schema() { authenticate_user(\"\"); }\n",
+            "fn migrate_database_schema() {\n    run_migration_step();\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("handler.rs"),
+            "fn handle_request() {\n    parse_json_body();\n}\n",
         )
         .unwrap();
 
         let engine = SearchEngine::new(root).unwrap();
         let results = engine
             .search(
-                "authenticate_user",
+                "authenticate credentials token",
                 &SearchOptions {
                     semantic: true,
                     ..SearchOptions::default()

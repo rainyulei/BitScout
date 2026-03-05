@@ -32,7 +32,7 @@ fn fallback_response(reason: &str) -> SearchResponse {
 }
 
 fn cold_start_engine(search_path: &Path, cmd: &str) -> Result<SearchEngine, SearchResponse> {
-    let engine = SearchEngine::new(search_path).map_err(|e| SearchResponse {
+    let mut engine = SearchEngine::new(search_path).map_err(|e| SearchResponse {
         exit_code: 2,
         stdout: String::new(),
         stderr: format!("{}: {}", cmd, e),
@@ -41,7 +41,7 @@ fn cold_start_engine(search_path: &Path, cmd: &str) -> Result<SearchEngine, Sear
     if let Some(home) = std::env::var_os("HOME") {
         let cache_dir = PathBuf::from(home).join(".bitscout/cache/content");
         let cache = ContentCache::new(&cache_dir);
-        return Ok(engine.with_cache(cache));
+        engine = engine.with_cache(cache);
     }
     Ok(engine)
 }
@@ -93,10 +93,15 @@ fn handle_rg(command: &str, args: &[String], cwd: &str) -> SearchResponse {
     };
 
     if results.is_empty() {
+        let stderr = if parsed.semantic {
+            format!("No semantically relevant files found for '{}'. Try more specific terms or use plain rg without --semantic.\n", parsed.pattern)
+        } else {
+            String::new()
+        };
         return SearchResponse {
             exit_code: 1,
             stdout: String::new(),
-            stderr: String::new(),
+            stderr,
         };
     }
 
