@@ -207,35 +207,14 @@ impl SearchEngine {
     ) -> Result<Vec<SearchResult>, crate::Error> {
         use crate::search::rp::RpScorer;
 
-        // Split query into individual word patterns for OR-matching.
-        // Semantic search should find files containing ANY query word,
-        // then use RP cosine to rank by overall relevance.
-        let words: Vec<&str> = pattern
-            .split(|c: char| c.is_whitespace() || c.is_ascii_punctuation())
-            .filter(|w| !w.is_empty())
-            .collect();
-
-        let patterns: Vec<&str> = if words.is_empty() {
-            vec![pattern]
-        } else {
-            words
-        };
-
-        let matcher = Matcher::with_options(
-            &patterns,
-            MatchOptions {
-                case_insensitive: true, // semantic search is always case-insensitive
-                use_regex: false,       // treat words as literals
-            },
-        )?;
-
         let canonical_search_root = opts.search_root.as_ref().and_then(|p| p.canonicalize().ok());
 
         let mut rp_scorer = RpScorer::new();
         let query_proj = rp_scorer.project(pattern);
 
-        // Collect (score, file_results) pairs for sorting
-        let mut scored_files: Vec<(f32, Vec<SearchResult>)> = Vec::new();
+        // Score ALL files by RP cosine — no literal filter required.
+        // This enables true semantic search: "login" can find "authentication" files.
+        let mut scored_files: Vec<(f32, PathBuf, String)> = Vec::new();
 
         for entry in self.tree.files() {
             if let Some(ref root) = canonical_search_root {
@@ -249,61 +228,74 @@ impl SearchEngine {
                 Err(_) => continue,
             };
 
-            // File must contain at least one query word
-            if text.is_empty() || !matcher.is_match(text.as_bytes()) {
+            if text.is_empty() {
                 continue;
             }
 
-            // RP score for the whole file
             let rp_score = rp_scorer.score(&query_proj, &text);
-
-            let lines: Vec<&str> = text.lines().collect();
-            let mut file_results = Vec::new();
-
-            for (idx, line) in lines.iter().enumerate() {
-                // Report lines containing any query word
-                if matcher.is_match(line.as_bytes()) {
-                    let line_number = idx + 1;
-
-                    let context_before: Vec<String> = if opts.context_lines > 0 {
-                        let start = idx.saturating_sub(opts.context_lines);
-                        lines[start..idx].iter().map(|l| l.to_string()).collect()
-                    } else {
-                        Vec::new()
-                    };
-
-                    let context_after: Vec<String> = if opts.context_lines > 0 {
-                        let end = (idx + 1 + opts.context_lines).min(lines.len());
-                        lines[(idx + 1)..end].iter().map(|l| l.to_string()).collect()
-                    } else {
-                        Vec::new()
-                    };
-
-                    file_results.push(SearchResult {
-                        path: entry.path.clone(),
-                        line_number,
-                        line_content: line.to_string(),
-                        context_before,
-                        context_after,
-                        bm25_score: Some(rp_score as f64),
-                    });
-                }
-            }
-
-            if !file_results.is_empty() {
-                scored_files.push((rp_score, file_results));
-            }
+            scored_files.push((rp_score, entry.path.clone(), text));
         }
 
         // Sort by RP score descending
         scored_files.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
-        // Flatten and truncate
-        let results: Vec<SearchResult> = scored_files
+        // Take top-N files with positive scores (or at least top 20)
+        let max_files = 20;
+        let top_files: Vec<_> = scored_files
             .into_iter()
-            .flat_map(|(_, results)| results)
-            .take(opts.max_results)
+            .take(max_files)
+            .filter(|(score, _, _)| *score > 0.0)
             .collect();
+
+        // For each top file, find the most relevant lines by per-line RP scoring
+        let mut results: Vec<SearchResult> = Vec::new();
+
+        for (file_score, path, text) in &top_files {
+            let lines: Vec<&str> = text.lines().collect();
+
+            // Score each non-trivial line
+            let mut line_scores: Vec<(usize, f32, &str)> = Vec::new();
+            for (idx, line) in lines.iter().enumerate() {
+                let trimmed = line.trim();
+                // Skip very short lines (comments, braces, blank)
+                if trimmed.len() < 10 {
+                    continue;
+                }
+                let line_score = rp_scorer.score(&query_proj, trimmed);
+                line_scores.push((idx, line_score, line));
+            }
+
+            // Sort lines by score desc, take top 5
+            line_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+            let mut top_lines: Vec<_> = line_scores.into_iter().take(5).collect();
+            // Re-sort by line number for display
+            top_lines.sort_by_key(|(idx, _, _)| *idx);
+
+            for (idx, _line_score, line) in &top_lines {
+                let context_before: Vec<String> = if opts.context_lines > 0 {
+                    let start = idx.saturating_sub(opts.context_lines);
+                    lines[start..*idx].iter().map(|l| l.to_string()).collect()
+                } else {
+                    Vec::new()
+                };
+                let context_after: Vec<String> = if opts.context_lines > 0 {
+                    let end = (idx + 1 + opts.context_lines).min(lines.len());
+                    lines[(idx + 1)..end].iter().map(|l| l.to_string()).collect()
+                } else {
+                    Vec::new()
+                };
+
+                results.push(SearchResult {
+                    path: path.clone(),
+                    line_number: idx + 1,
+                    line_content: line.to_string(),
+                    context_before,
+                    context_after,
+                    bm25_score: Some(*file_score as f64),
+                });
+            }
+        }
 
         Ok(results)
     }

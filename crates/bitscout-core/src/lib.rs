@@ -8,10 +8,10 @@ pub mod dispatch;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("IO error: {0}")]
+    #[error("{0}")]
     Io(String),
-    #[error("Search error: {0}")]
+    #[error("{0}")]
     Search(String),
-    #[error("Extract error: {0}")]
+    #[error("{0}")]
     Extract(String),
 }

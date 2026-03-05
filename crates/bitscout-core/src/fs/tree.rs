@@ -20,9 +20,9 @@ pub struct FileTree {
 impl FileTree {
     /// Scan a directory tree, respecting `.gitignore` rules.
     pub fn scan(root: &Path) -> Result<Self, crate::Error> {
-        let root = root
-            .canonicalize()
-            .map_err(|e| crate::Error::Io(format!("cannot canonicalize root: {e}")))?;
+        let root = root.canonicalize().map_err(|e| {
+            crate::Error::Io(format!("{}: {}", root.display(), e))
+        })?;
 
         let mut entries = Vec::new();
 

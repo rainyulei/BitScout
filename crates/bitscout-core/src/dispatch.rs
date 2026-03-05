@@ -31,11 +31,11 @@ fn fallback_response(reason: &str) -> SearchResponse {
     }
 }
 
-fn cold_start_engine(search_path: &Path) -> Result<SearchEngine, SearchResponse> {
+fn cold_start_engine(search_path: &Path, cmd: &str) -> Result<SearchEngine, SearchResponse> {
     let engine = SearchEngine::new(search_path).map_err(|e| SearchResponse {
         exit_code: 2,
         stdout: String::new(),
-        stderr: format!("bitscout: {}", e),
+        stderr: format!("{}: {}", cmd, e),
     })?;
     // Attach content cache from default dir (~/.bitscout/cache/content/)
     if let Some(home) = std::env::var_os("HOME") {
@@ -64,7 +64,7 @@ fn handle_rg(command: &str, args: &[String], cwd: &str) -> SearchResponse {
             Err(resp) => return resp,
         }
     } else {
-        let engine = match cold_start_engine(&search_path) {
+        let engine = match cold_start_engine(&search_path, "rg") {
             Ok(e) => e,
             Err(resp) => return resp,
         };
@@ -75,6 +75,7 @@ fn handle_rg(command: &str, args: &[String], cwd: &str) -> SearchResponse {
             max_results: 100_000,
             use_regex,
             bm25: parsed.bm25,
+            semantic: parsed.semantic,
             search_root: Some(search_path),
             ..SearchOptions::default()
         };
@@ -99,7 +100,11 @@ fn handle_rg(command: &str, args: &[String], cwd: &str) -> SearchResponse {
         };
     }
 
-    let stdout = format_rg_output(&parsed, &results, parsed.bm25);
+    let stdout = if parsed.semantic {
+        format_semantic_output(&results)
+    } else {
+        format_rg_output(&parsed, &results, parsed.bm25)
+    };
 
     SearchResponse {
         exit_code: 0,
@@ -204,7 +209,7 @@ fn handle_grep(command: &str, args: &[String], cwd: &str) -> SearchResponse {
                 Err(resp) => return resp,
             }
         } else {
-            let engine = match cold_start_engine(&search_path) {
+            let engine = match cold_start_engine(&search_path, "grep") {
                 Ok(e) => e,
                 Err(resp) => return resp,
             };
@@ -635,6 +640,52 @@ fn walk_dir_recursive(root: &Path) -> Result<Vec<FindDirEntry>, String> {
 
     entries.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(entries)
+}
+
+// ---------------------------------------------------------------------------
+// semantic output formatting
+// ---------------------------------------------------------------------------
+
+fn format_semantic_output(results: &[SearchResult]) -> String {
+    // Group results by file, preserving the order from engine (sorted by RP score desc)
+    let mut file_groups: Vec<(&PathBuf, f64, Vec<&SearchResult>)> = Vec::new();
+    let mut seen: std::collections::HashSet<&PathBuf> = std::collections::HashSet::new();
+
+    for r in results {
+        if !seen.contains(&r.path) {
+            seen.insert(&r.path);
+            file_groups.push((&r.path, r.bm25_score.unwrap_or(0.0), Vec::new()));
+        }
+        if let Some(group) = file_groups.iter_mut().find(|(p, _, _)| *p == &r.path) {
+            group.2.push(r);
+        }
+    }
+
+    let mut output = String::new();
+    for (path, score, lines) in &file_groups {
+        // File header with score
+        output.push_str(&format!("\x1b[36m[{:.4}]\x1b[0m \x1b[1;35m{}\x1b[0m\n", score, path.display()));
+        // Show up to 5 matching lines per file
+        for r in lines.iter().take(5) {
+            output.push_str(&format!(
+                "  \x1b[32m{}\x1b[0m: {}\n",
+                r.line_number, r.line_content
+            ));
+        }
+        if lines.len() > 5 {
+            output.push_str(&format!("  ... and {} more matches\n", lines.len() - 5));
+        }
+        output.push('\n');
+    }
+
+    if !file_groups.is_empty() {
+        output.push_str(&format!(
+            "\x1b[33m{} files matched, ranked by semantic relevance\x1b[0m\n",
+            file_groups.len()
+        ));
+    }
+
+    output
 }
 
 // ---------------------------------------------------------------------------
