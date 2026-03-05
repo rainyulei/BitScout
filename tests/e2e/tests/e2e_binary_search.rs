@@ -34,8 +34,8 @@ fn test_search_finds_text_in_zip() {
     let buf = Vec::new();
     let cursor = std::io::Cursor::new(buf);
     let mut zip_writer = zip::ZipWriter::new(cursor);
-    let options =
-        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
     zip_writer.start_file("src/main.rs", options).unwrap();
     zip_writer
         .write_all(b"fn unique_function_name() {}\n")
@@ -67,9 +67,7 @@ fn test_search_finds_text_in_docx() {
 <w:body><w:p><w:r><w:t>confidential_report_keyword</w:t></w:r></w:p></w:body>
 </w:document>"#;
 
-    zip_writer
-        .start_file("word/document.xml", options)
-        .unwrap();
+    zip_writer.start_file("word/document.xml", options).unwrap();
     zip_writer.write_all(xml.as_bytes()).unwrap();
     let docx_data = zip_writer.finish().unwrap().into_inner();
 

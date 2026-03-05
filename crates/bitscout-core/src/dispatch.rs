@@ -335,7 +335,7 @@ fn match_glob(pattern: &str, path: &Path) -> bool {
 // ---------------------------------------------------------------------------
 
 fn handle_find_cmd(args: &[String], cwd: &str) -> SearchResponse {
-    use crate::compat::find_compat::{parse_find_args, EntryType, glob_match, glob_match_ci};
+    use crate::compat::find_compat::{glob_match, glob_match_ci, parse_find_args, EntryType};
 
     let mut full_args = vec!["find".to_string()];
     full_args.extend(args.iter().cloned());
@@ -666,7 +666,11 @@ fn format_semantic_output(results: &[SearchResult]) -> String {
     let mut output = String::new();
     for (path, score, lines) in &file_groups {
         // File header with score
-        output.push_str(&format!("\x1b[36m[{:.4}]\x1b[0m \x1b[1;35m{}\x1b[0m\n", score, path.display()));
+        output.push_str(&format!(
+            "\x1b[36m[{:.4}]\x1b[0m \x1b[1;35m{}\x1b[0m\n",
+            score,
+            path.display()
+        ));
         // Show up to 5 matching lines per file
         for r in lines.iter().take(5) {
             output.push_str(&format!(
@@ -792,11 +796,7 @@ fn format_rg_json(results: &[SearchResult], bm25: Bm25Mode) -> String {
     output
 }
 
-fn format_grep_output(
-    parsed: &GrepParsedArgs,
-    results: &[SearchResult],
-    bm25: Bm25Mode,
-) -> String {
+fn format_grep_output(parsed: &GrepParsedArgs, results: &[SearchResult], bm25: Bm25Mode) -> String {
     let show_filename = grep_compat::should_show_filename(parsed);
 
     if parsed.files_only {
@@ -925,11 +925,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("hello.txt"), "hello world\n").unwrap();
 
-        let resp = dispatch(
-            "cat",
-            &["hello.txt".into()],
-            tmp.path().to_str().unwrap(),
-        );
+        let resp = dispatch("cat", &["hello.txt".into()], tmp.path().to_str().unwrap());
         assert_eq!(resp.exit_code, 0);
         assert_eq!(resp.stdout, "hello world\n");
     }

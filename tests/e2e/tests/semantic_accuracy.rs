@@ -18,12 +18,7 @@ use tempfile::TempDir;
 // ---------------------------------------------------------------------------
 
 fn dispatch_semantic(query: &str, cwd: &str) -> Vec<(String, f64)> {
-    let args: Vec<String> = vec![
-        "--semantic".into(),
-        "-n".into(),
-        query.into(),
-        ".".into(),
-    ];
+    let args: Vec<String> = vec!["--semantic".into(), "-n".into(), query.into(), ".".into()];
     let resp = dispatch("rg", &args, cwd);
     // Parse "[score] path:line:content" or "path:line:content" lines
     // Group by file, take the score from bm25_score (RP score stored there)
@@ -48,10 +43,7 @@ fn dispatch_semantic(query: &str, cwd: &str) -> Vec<(String, f64)> {
     sorted
 }
 
-fn search_semantic_scored(
-    root: &Path,
-    query: &str,
-) -> Vec<(String, f64)> {
+fn search_semantic_scored(root: &Path, query: &str) -> Vec<(String, f64)> {
     let engine = SearchEngine::new(root).unwrap();
     let opts = SearchOptions {
         semantic: true,
@@ -63,12 +55,19 @@ fn search_semantic_scored(
     // Group by file, take score per file
     let mut file_scores: HashMap<String, f64> = HashMap::new();
     for r in &results {
-        let filename = r.path.file_name()
+        let filename = r
+            .path
+            .file_name()
             .map(|f| f.to_string_lossy().to_string())
             .unwrap_or_default();
         let score = r.bm25_score.unwrap_or(0.0);
-        file_scores.entry(filename)
-            .and_modify(|s| { if score > *s { *s = score; } })
+        file_scores
+            .entry(filename)
+            .and_modify(|s| {
+                if score > *s {
+                    *s = score;
+                }
+            })
             .or_insert(score);
     }
 
@@ -78,7 +77,8 @@ fn search_semantic_scored(
 }
 
 fn filename(r: &SearchResult) -> String {
-    r.path.file_name()
+    r.path
+        .file_name()
         .map(|f| f.to_string_lossy().to_string())
         .unwrap_or_default()
 }
@@ -110,18 +110,23 @@ fn test_rp_cosine_similarity_ranking() {
     eprintln!("\n=== RP Cosine Similarity Ranking (unit) ===");
     eprintln!("  Query: \"{}\"", query);
     eprintln!("  auth_doc score:    {:.4}  (highly related)", auth_score);
-    eprintln!("  session_doc score: {:.4}  (somewhat related)", session_score);
+    eprintln!(
+        "  session_doc score: {:.4}  (somewhat related)",
+        session_score
+    );
     eprintln!("  math_doc score:    {:.4}  (unrelated)", math_score);
 
     assert!(
         auth_score > session_score,
         "auth ({:.4}) should rank above session ({:.4})",
-        auth_score, session_score
+        auth_score,
+        session_score
     );
     assert!(
         session_score > math_score,
         "session ({:.4}) should rank above math ({:.4})",
-        session_score, math_score
+        session_score,
+        math_score
     );
 }
 
@@ -150,12 +155,14 @@ fn test_rp_cosine_similarity_code_patterns() {
     assert!(
         error_score > db_score,
         "error ({:.4}) should rank above db ({:.4})",
-        error_score, db_score
+        error_score,
+        db_score
     );
     assert!(
         error_score > config_score,
         "error ({:.4}) should rank above config ({:.4})",
-        error_score, config_score
+        error_score,
+        config_score
     );
 }
 
@@ -231,10 +238,7 @@ fn test_semantic_ranks_auth_file_highest_for_token_query() {
         eprintln!("  {:.4}  {}", s, f);
     }
 
-    assert!(
-        !results.is_empty(),
-        "Should have results"
-    );
+    assert!(!results.is_empty(), "Should have results");
 
     // auth_token.rs should rank first (most about auth tokens)
     let first = &results[0].0;
@@ -389,7 +393,10 @@ fn test_semantic_reorders_vs_plain_search() {
     // If aaa_unrelated is present, it should rank below bbb_error_handler.
     // If it was filtered out by adaptive threshold, that's also correct behavior.
     if let Some(aaa_pos) = all_files.iter().position(|f| f.contains("aaa_unrelated")) {
-        let bbb_pos = all_files.iter().position(|f| f.contains("bbb_error_handler")).unwrap();
+        let bbb_pos = all_files
+            .iter()
+            .position(|f| f.contains("bbb_error_handler"))
+            .unwrap();
         assert!(
             bbb_pos < aaa_pos,
             "bbb should rank above aaa when both present"
@@ -503,10 +510,22 @@ fn test_semantic_score_variance() {
     let q_proj = scorer.project(query);
 
     let docs = [
-        ("network_server", "tcp socket listen bind accept connection server client port address network"),
-        ("http_client", "http request response header body url fetch get post status connection"),
-        ("file_io", "read write open close file path buffer seek flush directory rename"),
-        ("math_utils", "add subtract multiply divide sqrt pow abs ceil floor round"),
+        (
+            "network_server",
+            "tcp socket listen bind accept connection server client port address network",
+        ),
+        (
+            "http_client",
+            "http request response header body url fetch get post status connection",
+        ),
+        (
+            "file_io",
+            "read write open close file path buffer seek flush directory rename",
+        ),
+        (
+            "math_utils",
+            "add subtract multiply divide sqrt pow abs ceil floor round",
+        ),
     ];
 
     let mut scores: Vec<(&str, f32)> = docs
@@ -525,9 +544,16 @@ fn test_semantic_score_variance() {
     let min_score = scores.last().unwrap().1;
     let spread = max_score - min_score;
 
-    eprintln!("  Spread: {:.4} (max={:.4}, min={:.4})", spread, max_score, min_score);
+    eprintln!(
+        "  Spread: {:.4} (max={:.4}, min={:.4})",
+        spread, max_score, min_score
+    );
 
-    assert!(spread > 0.05, "Score spread ({:.4}) too small — scores are too flat", spread);
+    assert!(
+        spread > 0.05,
+        "Score spread ({:.4}) too small — scores are too flat",
+        spread
+    );
 
     // network_server should clearly be #1
     assert_eq!(scores[0].0, "network_server");
@@ -563,7 +589,9 @@ fn test_semantic_deterministic() {
         assert!(
             (a - b).abs() < 1e-5,
             "Projection dim {} differs: {} vs {}",
-            i, a, b
+            i,
+            a,
+            b
         );
     }
 
@@ -573,11 +601,17 @@ fn test_semantic_deterministic() {
     assert!(
         (score1 - score2).abs() < 1e-6,
         "Scores should be deterministic: {} vs {}",
-        score1, score2
+        score1,
+        score2
     );
 
     eprintln!("\n=== Determinism Check ===");
-    eprintln!("  Score1: {:.6}, Score2: {:.6}, diff: {:.10}", score1, score2, (score1 - score2).abs());
+    eprintln!(
+        "  Score1: {:.6}, Score2: {:.6}, diff: {:.10}",
+        score1,
+        score2,
+        (score1 - score2).abs()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -713,11 +747,17 @@ fn test_semantic_accuracy_report() {
     // Test queries with expected top-ranked files
     let test_cases: Vec<(&str, Vec<&str>)> = vec![
         // (query, expected files in rough order of relevance)
-        ("login password authenticate",    vec!["auth_login.rs", "test_auth.rs", "auth_jwt.rs"]),
-        ("jwt token generate validate",    vec!["auth_jwt.rs", "auth_login.rs", "test_auth.rs"]),
-        ("database query insert migrate",  vec!["database.rs"]),
-        ("http server listen connection",  vec!["http_server.rs"]),
-        ("cache evict lru store",          vec!["cache.rs"]),
+        (
+            "login password authenticate",
+            vec!["auth_login.rs", "test_auth.rs", "auth_jwt.rs"],
+        ),
+        (
+            "jwt token generate validate",
+            vec!["auth_jwt.rs", "auth_login.rs", "test_auth.rs"],
+        ),
+        ("database query insert migrate", vec!["database.rs"]),
+        ("http server listen connection", vec!["http_server.rs"]),
+        ("cache evict lru store", vec!["cache.rs"]),
     ];
 
     eprintln!("\n╔══════════════════════════════════════════════════════════════════════════╗");
@@ -733,17 +773,32 @@ fn test_semantic_accuracy_report() {
         let results = search_semantic_scored(root, query);
 
         let result_files: Vec<&str> = results.iter().map(|(f, _)| f.as_str()).collect();
-        let top1_correct = result_files.first().map_or(false, |f| *f == expected_top[0]);
+        let top1_correct = result_files
+            .first()
+            .map_or(false, |f| *f == expected_top[0]);
         let top3_files: Vec<&str> = result_files.iter().take(3).copied().collect();
         let top3_has_expected = expected_top[0].to_string();
         let top3_correct = top3_files.contains(&top3_has_expected.as_str());
 
-        if top1_correct { correct_top1 += 1; }
-        if top3_correct { correct_top3 += 1; }
+        if top1_correct {
+            correct_top1 += 1;
+        }
+        if top3_correct {
+            correct_top3 += 1;
+        }
 
-        let icon = if top1_correct { "OK" } else if top3_correct { "~" } else { "X" };
+        let icon = if top1_correct {
+            "OK"
+        } else if top3_correct {
+            "~"
+        } else {
+            "X"
+        };
 
-        eprintln!("║  [{}] Query: {:40} Expected #1: {:18}", icon, query, expected_top[0]);
+        eprintln!(
+            "║  [{}] Query: {:40} Expected #1: {:18}",
+            icon, query, expected_top[0]
+        );
         for (i, (f, s)) in results.iter().take(5).enumerate() {
             let marker = if *f == expected_top[0] { " <--" } else { "" };
             eprintln!("║       #{}: {:.4}  {}{}", i + 1, s, f, marker);
@@ -755,15 +810,26 @@ fn test_semantic_accuracy_report() {
     }
 
     eprintln!("╠══════════════════════════════════════════════════════════════════════════╣");
-    eprintln!("║  Top-1 Accuracy: {}/{} ({:.0}%)", correct_top1, total, correct_top1 as f64 / total as f64 * 100.0);
-    eprintln!("║  Top-3 Accuracy: {}/{} ({:.0}%)", correct_top3, total, correct_top3 as f64 / total as f64 * 100.0);
+    eprintln!(
+        "║  Top-1 Accuracy: {}/{} ({:.0}%)",
+        correct_top1,
+        total,
+        correct_top1 as f64 / total as f64 * 100.0
+    );
+    eprintln!(
+        "║  Top-3 Accuracy: {}/{} ({:.0}%)",
+        correct_top3,
+        total,
+        correct_top3 as f64 / total as f64 * 100.0
+    );
     eprintln!("╚══════════════════════════════════════════════════════════════════════════╝");
 
     // At least 60% top-1 accuracy
     assert!(
         correct_top1 as f64 / total as f64 >= 0.6,
         "Top-1 accuracy {}/{} < 60%",
-        correct_top1, total
+        correct_top1,
+        total
     );
 }
 
@@ -874,11 +940,15 @@ fn test_lsa_cross_vocabulary() {
     let file_names: Vec<&str> = results.iter().map(|r| r.0.as_str()).collect();
 
     // Auth-related files (login_page, login_api, auth_module) should rank above unrelated files
-    let auth_files: Vec<usize> = file_names.iter().enumerate()
+    let auth_files: Vec<usize> = file_names
+        .iter()
+        .enumerate()
         .filter(|(_, f)| f.contains("login") || f.contains("auth"))
         .map(|(i, _)| i)
         .collect();
-    let unrelated_files: Vec<usize> = file_names.iter().enumerate()
+    let unrelated_files: Vec<usize> = file_names
+        .iter()
+        .enumerate()
         .filter(|(_, f)| f.contains("math") || f.contains("file_utils") || f.contains("http"))
         .map(|(i, _)| i)
         .collect();
@@ -890,11 +960,13 @@ fn test_lsa_cross_vocabulary() {
     );
 
     // The best auth file should rank above the best unrelated file
-    if let (Some(&best_auth), Some(&best_unrelated)) = (auth_files.first(), unrelated_files.first()) {
+    if let (Some(&best_auth), Some(&best_unrelated)) = (auth_files.first(), unrelated_files.first())
+    {
         assert!(
             best_auth < best_unrelated,
             "Best auth file (pos {}) should rank above best unrelated file (pos {})",
-            best_auth, best_unrelated
+            best_auth,
+            best_unrelated
         );
     }
 }
@@ -908,12 +980,30 @@ fn test_lsa_synonym_discovery() {
     // Build a corpus where "error" and "exception" always co-occur,
     // and "success" and "ok" always co-occur. LSA should learn these associations.
     let docs: Vec<(PathBuf, String)> = vec![
-        (PathBuf::from("a.rs"), "error exception failure crash panic handle recover".into()),
-        (PathBuf::from("b.rs"), "error exception fault bug defect trace stack".into()),
-        (PathBuf::from("c.rs"), "error exception invalid unexpected runtime abort".into()),
-        (PathBuf::from("d.rs"), "success ok result complete finish done return".into()),
-        (PathBuf::from("e.rs"), "success ok valid correct pass approve accept".into()),
-        (PathBuf::from("f.rs"), "success ok confirm acknowledge response positive".into()),
+        (
+            PathBuf::from("a.rs"),
+            "error exception failure crash panic handle recover".into(),
+        ),
+        (
+            PathBuf::from("b.rs"),
+            "error exception fault bug defect trace stack".into(),
+        ),
+        (
+            PathBuf::from("c.rs"),
+            "error exception invalid unexpected runtime abort".into(),
+        ),
+        (
+            PathBuf::from("d.rs"),
+            "success ok result complete finish done return".into(),
+        ),
+        (
+            PathBuf::from("e.rs"),
+            "success ok valid correct pass approve accept".into(),
+        ),
+        (
+            PathBuf::from("f.rs"),
+            "success ok confirm acknowledge response positive".into(),
+        ),
     ];
 
     let scorer = LsaScorer::build(&docs, 4);
@@ -923,7 +1013,8 @@ fn test_lsa_synonym_discovery() {
     let success_vec = scorer.project_query("success");
     let ok_vec = scorer.project_query("ok");
 
-    let error_exception = bitscout_core::search::lsa::cosine_similarity_pub(&error_vec, &exception_vec);
+    let error_exception =
+        bitscout_core::search::lsa::cosine_similarity_pub(&error_vec, &exception_vec);
     let error_success = bitscout_core::search::lsa::cosine_similarity_pub(&error_vec, &success_vec);
     let success_ok = bitscout_core::search::lsa::cosine_similarity_pub(&success_vec, &ok_vec);
 
@@ -936,12 +1027,14 @@ fn test_lsa_synonym_discovery() {
     assert!(
         error_exception > error_success,
         "error-exception ({:.4}) should be > error-success ({:.4})",
-        error_exception, error_success
+        error_exception,
+        error_success
     );
     assert!(
         success_ok > error_success,
         "success-ok ({:.4}) should be > error-success ({:.4})",
-        success_ok, error_success
+        success_ok,
+        error_success
     );
 }
 
@@ -955,17 +1048,38 @@ fn test_pure_lsa_cross_vocabulary() {
     let root = tmp.path();
 
     // Files with co-occurring terms for LSA to learn from
-    fs::write(root.join("a.rs"), "login auth user password session token verify\n".repeat(3)).unwrap();
-    fs::write(root.join("b.rs"), "login auth session token validate credential\n".repeat(3)).unwrap();
-    fs::write(root.join("c.rs"), "database query insert select update table\n".repeat(3)).unwrap();
-    fs::write(root.join("d.rs"), "database schema migrate column index pool\n".repeat(3)).unwrap();
+    fs::write(
+        root.join("a.rs"),
+        "login auth user password session token verify\n".repeat(3),
+    )
+    .unwrap();
+    fs::write(
+        root.join("b.rs"),
+        "login auth session token validate credential\n".repeat(3),
+    )
+    .unwrap();
+    fs::write(
+        root.join("c.rs"),
+        "database query insert select update table\n".repeat(3),
+    )
+    .unwrap();
+    fs::write(
+        root.join("d.rs"),
+        "database schema migrate column index pool\n".repeat(3),
+    )
+    .unwrap();
 
     let engine = SearchEngine::new(root).unwrap();
 
-    let results = engine.search("login auth", &SearchOptions {
-        semantic: true,
-        ..SearchOptions::default()
-    }).unwrap();
+    let results = engine
+        .search(
+            "login auth",
+            &SearchOptions {
+                semantic: true,
+                ..SearchOptions::default()
+            },
+        )
+        .unwrap();
 
     eprintln!("\n=== Pure LSA: 'login auth' ===");
     for r in &results {

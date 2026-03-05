@@ -23,7 +23,9 @@ fn real_rg() -> Option<String> {
     None
 }
 
-fn real_grep() -> &'static str { "/usr/bin/grep" }
+fn real_grep() -> &'static str {
+    "/usr/bin/grep"
+}
 
 fn run_cmd(cmd: &str, args: &[&str]) -> (i32, String) {
     let output = Command::new(cmd).args(args).output().unwrap();
@@ -53,7 +55,9 @@ fn create_mixed_format_corpus(dir: &Path) {
     fs::create_dir_all(dir.join("docs")).unwrap();
 
     // ── Plain text files ──────────────────────────────────────────────
-    fs::write(dir.join("src/config.rs"), r#"
+    fs::write(
+        dir.join("src/config.rs"),
+        r#"
 /// Application configuration
 pub struct AppConfig {
     pub database_url: String,
@@ -74,9 +78,13 @@ impl AppConfig {
 pub fn validate_api_key(key: &str) -> bool {
     key.starts_with("sk_live_") && key.len() > 20
 }
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
-    fs::write(dir.join("src/auth.rs"), r#"
+    fs::write(
+        dir.join("src/auth.rs"),
+        r#"
 use crate::config::AppConfig;
 
 pub fn authenticate(config: &AppConfig, token: &str) -> Result<User, AuthError> {
@@ -95,9 +103,13 @@ fn lookup_user(token: &str) -> Result<User, AuthError> {
 
 pub struct User { pub id: u64, pub name: String }
 pub enum AuthError { InvalidConfig, InvalidToken, DatabaseError }
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
-    fs::write(dir.join("src/main.rs"), r#"
+    fs::write(
+        dir.join("src/main.rs"),
+        r#"
 mod config;
 mod auth;
 
@@ -111,7 +123,9 @@ fn main() {
         Err(_) => eprintln!("Authentication failed"),
     }
 }
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
     // ── Gzip compressed log ───────────────────────────────────────────
     // Contains references to database_url and api_key that rg CANNOT see
@@ -161,29 +175,37 @@ fn main() {
         let options = SimpleFileOptions::default();
 
         zip.start_file("config_backup.toml", options).unwrap();
-        zip.write_all(br#"[database]
+        zip.write_all(
+            br#"[database]
 database_url = "postgres://backup:5432/mydb_backup"
 max_connections = 200
 
 [auth]
 api_key = "sk_live_backup_key_789"
 token_ttl = 3600
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         zip.start_file("deployment_notes.txt", options).unwrap();
-        zip.write_all(br#"Deployment checklist:
+        zip.write_all(
+            br#"Deployment checklist:
 1. Update database_url in production config
 2. Rotate api_key before deploy
 3. Verify max_connections matches server capacity
 4. Run integration tests
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let cursor = zip.finish().unwrap();
         fs::write(dir.join("archive/config_backup.zip"), cursor.into_inner()).unwrap();
     }
 
     // ── Plain text docs ───────────────────────────────────────────────
-    fs::write(dir.join("docs/setup.md"), r#"# Setup Guide
+    fs::write(
+        dir.join("docs/setup.md"),
+        r#"# Setup Guide
 
 ## Configuration
 
@@ -197,7 +219,9 @@ If you see "database_url connection refused":
 1. Check that PostgreSQL is running
 2. Verify the database_url is correct
 3. Check firewall rules
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 }
 
 // ===================================================================
@@ -221,22 +245,30 @@ fn test_deep_search_superiority() {
 
     // The search terms a developer would actually use
     let queries = vec![
-        ("database_url",    "开发者搜 database_url 排查连接问题"),
-        ("api_key",         "搜 api_key 检查密钥泄露"),
+        ("database_url", "开发者搜 database_url 排查连接问题"),
+        ("api_key", "搜 api_key 检查密钥泄露"),
         ("max_connections", "搜 max_connections 调优连接池"),
-        (r"sk_live_\w+",   "regex: 搜所有 sk_live_ 开头的密钥"),
-        (r"ERROR\s+\w+",   "regex: 搜所有 ERROR 日志"),
+        (r"sk_live_\w+", "regex: 搜所有 sk_live_ 开头的密钥"),
+        (r"ERROR\s+\w+", "regex: 搜所有 ERROR 日志"),
         (r"\d{4}-\d{2}-\d{2}", "regex: 搜所有日期格式"),
     ];
 
     eprintln!();
     eprintln!("╔════════════════════════════════════════════════════════════════════════════════════════╗");
-    eprintln!("║              BitScout Deep Search vs rg — Same Query, Same Directory                 ║");
-    eprintln!("║                                                                                      ║");
-    eprintln!("║  BitScout 穿透 .gz / .zip 搜索，一次 search 直达结果                                  ║");
+    eprintln!(
+        "║              BitScout Deep Search vs rg — Same Query, Same Directory                 ║"
+    );
+    eprintln!(
+        "║                                                                                      ║"
+    );
+    eprintln!(
+        "║  BitScout 穿透 .gz / .zip 搜索，一次 search 直达结果                                  ║"
+    );
     eprintln!("║  rg/grep 只能搜纯文本，压缩文件里的数据完全看不到                                       ║");
     eprintln!("╠════════════════════════════════════════════════════════════════════════════════════════╣");
-    eprintln!("║  Query                    │ real rg │ BitScout │ BS多发现 │ 场景                      ║");
+    eprintln!(
+        "║  Query                    │ real rg │ BitScout │ BS多发现 │ 场景                      ║"
+    );
     eprintln!("╠════════════════════════════════════════════════════════════════════════════════════════╣");
 
     let mut total_rg = 0;
@@ -250,8 +282,16 @@ fn test_deep_search_superiority() {
         let (_, bo) = run_bs("rg", &["--no-heading", pattern, "."], dir);
         let bs_count = count_lines(&bo);
 
-        let extra = if bs_count > rg_count { bs_count - rg_count } else { 0 };
-        let marker = if extra > 0 { format!("+{}", extra) } else { "=".into() };
+        let extra = if bs_count > rg_count {
+            bs_count - rg_count
+        } else {
+            0
+        };
+        let marker = if extra > 0 {
+            format!("+{}", extra)
+        } else {
+            "=".into()
+        };
 
         total_rg += rg_count;
         total_bs += bs_count;
@@ -300,7 +340,8 @@ fn test_deep_search_superiority() {
     assert!(
         total_bs > total_rg,
         "BitScout ({}) should find MORE than rg ({})",
-        total_bs, total_rg
+        total_bs,
+        total_rg
     );
 
     // Verify BitScout found everything rg found (superset)
@@ -309,23 +350,25 @@ fn test_deep_search_superiority() {
         let (_, bo) = run_bs("rg", &["--no-heading", pattern, "."], dir);
 
         // Every line from rg should appear in BitScout output (after normalization)
-        let rg_lines: std::collections::BTreeSet<String> = ro.lines()
+        let rg_lines: std::collections::BTreeSet<String> = ro
+            .lines()
             .filter(|l| !l.is_empty())
             .map(|l| {
                 // Extract just the content portion (after path:)
                 if let Some(pos) = l.find(':') {
-                    l[pos+1..].trim_end().to_string()
+                    l[pos + 1..].trim_end().to_string()
                 } else {
                     l.trim_end().to_string()
                 }
             })
             .collect();
 
-        let bs_lines: std::collections::BTreeSet<String> = bo.lines()
+        let bs_lines: std::collections::BTreeSet<String> = bo
+            .lines()
             .filter(|l| !l.is_empty())
             .map(|l| {
                 if let Some(pos) = l.find(':') {
-                    l[pos+1..].trim_end().to_string()
+                    l[pos + 1..].trim_end().to_string()
                 } else {
                     l.trim_end().to_string()
                 }
@@ -336,7 +379,8 @@ fn test_deep_search_superiority() {
         assert!(
             missing.is_empty(),
             "BitScout missed rg results for '{}': {:?}",
-            pattern, missing
+            pattern,
+            missing
         );
     }
 }
@@ -365,7 +409,10 @@ fn test_one_search_replaces_pipeline() {
     // Step 1: rg for plain text
     let (_, ro) = run_cmd(&rg_path, &["--no-heading", "database_url", d]);
     let rg_count = count_lines(&ro);
-    eprintln!("║  Step 1: rg \"database_url\" .              → {} 行 (只有纯文本)", rg_count);
+    eprintln!(
+        "║  Step 1: rg \"database_url\" .              → {} 行 (只有纯文本)",
+        rg_count
+    );
 
     // Step 2: gzcat + grep for gzip files (traditional approach)
     let zgrep_count = {
@@ -373,9 +420,7 @@ fn test_one_search_replaces_pipeline() {
         for entry in walkdir(tmp.path()) {
             if entry.to_string_lossy().ends_with(".gz") {
                 // gzcat file.gz | grep pattern
-                let gzcat = Command::new("gzcat")
-                    .arg(entry.to_str().unwrap())
-                    .output();
+                let gzcat = Command::new("gzcat").arg(entry.to_str().unwrap()).output();
                 if let Ok(o) = gzcat {
                     let text = String::from_utf8_lossy(&o.stdout);
                     count += text.lines().filter(|l| l.contains("database_url")).count();
@@ -384,7 +429,10 @@ fn test_one_search_replaces_pipeline() {
         }
         count
     };
-    eprintln!("║  Step 2: gzcat *.gz | grep \"database_url\" → {} 行 (压缩日志)", zgrep_count);
+    eprintln!(
+        "║  Step 2: gzcat *.gz | grep \"database_url\" → {} 行 (压缩日志)",
+        zgrep_count
+    );
 
     // Step 3: unzip + grep for zip files
     let zip_count = {
@@ -402,17 +450,26 @@ fn test_one_search_replaces_pipeline() {
         }
         count
     };
-    eprintln!("║  Step 3: unzip -p *.zip | grep            → {} 行 (zip归档)", zip_count);
+    eprintln!(
+        "║  Step 3: unzip -p *.zip | grep            → {} 行 (zip归档)",
+        zip_count
+    );
 
     let traditional_total = rg_count + zgrep_count + zip_count;
     eprintln!("║  ─────────────────────────────────────────────────────────────────");
-    eprintln!("║  传统方式合计: {} 行 (需要 3 个命令 + 管道组合)", traditional_total);
+    eprintln!(
+        "║  传统方式合计: {} 行 (需要 3 个命令 + 管道组合)",
+        traditional_total
+    );
 
     // Now BitScout: single search
     let (_, bo) = run_bs("rg", &["--no-heading", "database_url", "."], tmp.path());
     let bs_count = count_lines(&bo);
     eprintln!("║");
-    eprintln!("║  BitScout: rg \"database_url\" .            → {} 行 (一次搜全，0 管道)", bs_count);
+    eprintln!(
+        "║  BitScout: rg \"database_url\" .            → {} 行 (一次搜全，0 管道)",
+        bs_count
+    );
     eprintln!("║");
 
     assert_eq!(

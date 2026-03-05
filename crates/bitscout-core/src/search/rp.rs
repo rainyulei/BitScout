@@ -362,7 +362,11 @@ mod tests {
         let mut scorer = RpScorer::new();
         let proj = scorer.project("authentication token validation");
         let sim = cosine_similarity(&proj, &proj);
-        assert!((sim - 1.0).abs() < 1e-5, "self-similarity should be ~1.0, got {}", sim);
+        assert!(
+            (sim - 1.0).abs() < 1e-5,
+            "self-similarity should be ~1.0, got {}",
+            sim
+        );
     }
 
     #[test]
@@ -379,7 +383,8 @@ mod tests {
         assert!(
             sim_score > dis_score,
             "similar ({}) should score higher than dissimilar ({})",
-            sim_score, dis_score
+            sim_score,
+            dis_score
         );
     }
 

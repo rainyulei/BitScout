@@ -149,7 +149,7 @@ mod tests {
         let cache = ContentCache::new_with_limit(tmp.path(), 30);
 
         cache.put("k1", "aaaaaaaaaa").unwrap(); // 10 bytes
-        // Set k1 mtime to the past so it's oldest
+                                                // Set k1 mtime to the past so it's oldest
         let past = FileTime::from_unix_time(1000, 0);
         filetime::set_file_mtime(tmp.path().join("k1"), past).unwrap();
 

@@ -1,6 +1,6 @@
-use std::path::Path;
-use sha2::{Sha256, Digest};
 use crate::cache::content_cache::ContentCache;
+use sha2::{Digest, Sha256};
+use std::path::Path;
 
 /// Detected file type based on magic bytes and extension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,15 +39,70 @@ impl FileType {
         // Extension-based detection for text files
         let lower = filename.to_lowercase();
         let text_extensions = [
-            ".rs", ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".c", ".cpp", ".h",
-            ".go", ".rb", ".php", ".swift", ".kt", ".scala", ".sh", ".bash", ".zsh",
-            ".txt", ".md", ".markdown", ".rst", ".org", ".adoc",
-            ".json", ".yaml", ".yml", ".toml", ".xml", ".html", ".htm", ".css",
-            ".sql", ".graphql", ".proto", ".csv", ".tsv", ".ini", ".cfg", ".conf",
-            ".env", ".gitignore", ".dockerignore", ".editorconfig",
-            ".makefile", ".cmake", ".gradle", ".sbt",
-            ".r", ".m", ".pl", ".lua", ".vim", ".el", ".clj", ".ex", ".exs",
-            ".hs", ".ml", ".fs", ".v", ".sv", ".vhd",
+            ".rs",
+            ".py",
+            ".js",
+            ".ts",
+            ".jsx",
+            ".tsx",
+            ".java",
+            ".c",
+            ".cpp",
+            ".h",
+            ".go",
+            ".rb",
+            ".php",
+            ".swift",
+            ".kt",
+            ".scala",
+            ".sh",
+            ".bash",
+            ".zsh",
+            ".txt",
+            ".md",
+            ".markdown",
+            ".rst",
+            ".org",
+            ".adoc",
+            ".json",
+            ".yaml",
+            ".yml",
+            ".toml",
+            ".xml",
+            ".html",
+            ".htm",
+            ".css",
+            ".sql",
+            ".graphql",
+            ".proto",
+            ".csv",
+            ".tsv",
+            ".ini",
+            ".cfg",
+            ".conf",
+            ".env",
+            ".gitignore",
+            ".dockerignore",
+            ".editorconfig",
+            ".makefile",
+            ".cmake",
+            ".gradle",
+            ".sbt",
+            ".r",
+            ".m",
+            ".pl",
+            ".lua",
+            ".vim",
+            ".el",
+            ".clj",
+            ".ex",
+            ".exs",
+            ".hs",
+            ".ml",
+            ".fs",
+            ".v",
+            ".sv",
+            ".vhd",
         ];
 
         // No extension or known text extension → PlainText
@@ -61,8 +116,15 @@ impl FileType {
             // Check common text filenames without extensions
             let basename = lower.rsplit('/').next().unwrap_or(&lower);
             let text_filenames = [
-                "makefile", "dockerfile", "vagrantfile", "gemfile",
-                "rakefile", "procfile", "license", "readme", "changelog",
+                "makefile",
+                "dockerfile",
+                "vagrantfile",
+                "gemfile",
+                "rakefile",
+                "procfile",
+                "license",
+                "readme",
+                "changelog",
             ];
             if text_filenames.contains(&basename) {
                 return Self::PlainText;
@@ -87,7 +149,8 @@ pub fn extract_text(path: &Path) -> Result<String, crate::Error> {
         return Ok(String::new());
     }
 
-    let filename = path.file_name()
+    let filename = path
+        .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     let header = &bytes[..bytes.len().min(16)];
@@ -106,7 +169,8 @@ pub fn extract_text_cached(path: &Path, cache: &ContentCache) -> Result<String, 
         return Ok(String::new());
     }
 
-    let filename = path.file_name()
+    let filename = path
+        .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     let header = &bytes[..bytes.len().min(16)];
@@ -137,11 +201,9 @@ pub fn extract_text_cached(path: &Path, cache: &ContentCache) -> Result<String, 
 /// Internal: extract text from bytes based on detected file type.
 fn extract_from_bytes(file_type: FileType, bytes: &[u8]) -> Result<String, crate::Error> {
     match file_type {
-        FileType::PlainText => {
-            std::str::from_utf8(bytes)
-                .map(|s| s.to_string())
-                .map_err(|e| crate::Error::Extract(format!("UTF-8 decode error: {e}")))
-        }
+        FileType::PlainText => std::str::from_utf8(bytes)
+            .map(|s| s.to_string())
+            .map_err(|e| crate::Error::Extract(format!("UTF-8 decode error: {e}"))),
         FileType::Gzip => crate::extract::gz::decompress_gz(bytes),
         FileType::Zip => crate::extract::zip_extract::extract_zip(bytes),
         FileType::Docx => crate::extract::docx::extract_docx(bytes),
@@ -157,8 +219,14 @@ mod tests {
 
     #[test]
     fn test_detect_plain_text_by_extension() {
-        assert_eq!(FileType::detect("hello.rs", b"fn main() {}"), FileType::PlainText);
-        assert_eq!(FileType::detect("readme.md", b"# Title"), FileType::PlainText);
+        assert_eq!(
+            FileType::detect("hello.rs", b"fn main() {}"),
+            FileType::PlainText
+        );
+        assert_eq!(
+            FileType::detect("readme.md", b"# Title"),
+            FileType::PlainText
+        );
         assert_eq!(FileType::detect("data.json", b"{}"), FileType::PlainText);
     }
 
@@ -193,7 +261,10 @@ mod tests {
     #[test]
     fn test_detect_unknown_binary() {
         let random_bytes = &[0x00, 0x01, 0x02, 0xff];
-        assert_eq!(FileType::detect("unknown.bin", random_bytes), FileType::Unknown);
+        assert_eq!(
+            FileType::detect("unknown.bin", random_bytes),
+            FileType::Unknown
+        );
     }
 
     #[test]

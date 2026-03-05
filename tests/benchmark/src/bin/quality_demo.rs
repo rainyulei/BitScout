@@ -18,7 +18,10 @@ fn separator(title: &str) {
 }
 
 fn show_extracted_text(label: &str, path: &Path) {
-    println!("\n  [{label}] {}", path.file_name().unwrap().to_string_lossy());
+    println!(
+        "\n  [{label}] {}",
+        path.file_name().unwrap().to_string_lossy()
+    );
     match extract_text(path) {
         Ok(text) => {
             let lines: Vec<&str> = text.lines().collect();
@@ -59,15 +62,19 @@ fn demo_bm25_ranking(dir: &Path) {
         path: String,
         tf: usize,       // term frequency in this file
         doc_len: usize,  // lines in this file
-        preview: String,  // first matching line
+        preview: String, // first matching line
     }
 
-    let mut file_stats: std::collections::HashMap<String, FileStats> = std::collections::HashMap::new();
+    let mut file_stats: std::collections::HashMap<String, FileStats> =
+        std::collections::HashMap::new();
     let mut total_doc_len: usize = 0;
     let mut doc_count: usize = 0;
 
     // Count files and aggregate stats
-    for entry in bitscout_core::fs::tree::FileTree::scan(dir).unwrap().files() {
+    for entry in bitscout_core::fs::tree::FileTree::scan(dir)
+        .unwrap()
+        .files()
+    {
         if let Ok(text) = extract_text(&entry.path) {
             let lines = text.lines().count();
             total_doc_len += lines;
@@ -100,14 +107,26 @@ fn demo_bm25_ranking(dir: &Path) {
         .values()
         .map(|fs| {
             let score = scorer.score(fs.tf, fs.doc_len, df);
-            (fs.path.clone(), score, fs.tf, fs.doc_len, fs.preview.clone())
+            (
+                fs.path.clone(),
+                score,
+                fs.tf,
+                fs.doc_len,
+                fs.preview.clone(),
+            )
         })
         .collect();
 
     scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
-    println!("  {:>4} | {:>7} | {:>3} | {:>5} | File / Preview", "Rank", "BM25", "TF", "Lines");
-    println!("  {:->4}-+-{:->7}-+-{:->3}-+-{:->5}-+-{:->40}", "", "", "", "", "");
+    println!(
+        "  {:>4} | {:>7} | {:>3} | {:>5} | File / Preview",
+        "Rank", "BM25", "TF", "Lines"
+    );
+    println!(
+        "  {:->4}-+-{:->7}-+-{:->3}-+-{:->5}-+-{:->40}",
+        "", "", "", "", ""
+    );
 
     for (i, (path, score, tf, doc_len, preview)) in scored.iter().take(15).enumerate() {
         let short_preview = if preview.len() > 38 {
@@ -300,18 +319,30 @@ INSERT INTO users (email, password_hash) VALUES
         )
         .unwrap();
 
-    println!("  Found {} matches across {} file types:\n", results.len(), {
-        let mut types: std::collections::HashSet<String> = std::collections::HashSet::new();
-        for r in &results {
-            let ext = r.path.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or("none".into());
-            types.insert(ext);
+    println!(
+        "  Found {} matches across {} file types:\n",
+        results.len(),
+        {
+            let mut types: std::collections::HashSet<String> = std::collections::HashSet::new();
+            for r in &results {
+                let ext = r
+                    .path
+                    .extension()
+                    .map(|e| e.to_string_lossy().to_string())
+                    .unwrap_or("none".into());
+                types.insert(ext);
+            }
+            types.len()
         }
-        types.len()
-    });
+    );
 
     for r in &results {
         let fname = r.path.file_name().unwrap().to_string_lossy();
-        let ext = r.path.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or("?".into());
+        let ext = r
+            .path
+            .extension()
+            .map(|e| e.to_string_lossy().to_string())
+            .unwrap_or("?".into());
         let ftype = match ext.as_str() {
             "rs" => "PlainText",
             "gz" => "Gzip",
@@ -325,7 +356,13 @@ INSERT INTO users (email, password_hash) VALUES
         } else {
             r.line_content.clone()
         };
-        println!("  [{:>9}] {}:{} — {}", ftype, fname, r.line_number, line_preview.trim());
+        println!(
+            "  [{:>9}] {}:{} — {}",
+            ftype,
+            fname,
+            r.line_number,
+            line_preview.trim()
+        );
     }
 
     // ── 3. BM25 Ranking ──
@@ -336,17 +373,23 @@ INSERT INTO users (email, password_hash) VALUES
     let bd = bm25_dir.path();
 
     // File A: Authentication is THE topic (high TF, short doc)
-    fs::write(bd.join("auth_core.rs"), r#"
+    fs::write(
+        bd.join("auth_core.rs"),
+        r#"
 pub fn authenticate(user: &str, pass: &str) -> bool { check_credentials(user, pass) }
 pub fn authenticate_token(token: &str) -> bool { verify_jwt(token) }
 pub fn authenticate_api_key(key: &str) -> bool { lookup_key(key) }
 fn check_credentials(u: &str, p: &str) -> bool { true }
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
     // File B: Authentication mentioned once in a huge file (low TF, long doc)
     let mut big_file = String::new();
     for i in 0..200 {
-        big_file.push_str(&format!("fn utility_function_{i}() {{ /* some code */ }}\n"));
+        big_file.push_str(&format!(
+            "fn utility_function_{i}() {{ /* some code */ }}\n"
+        ));
     }
     big_file.push_str("fn setup() { let _ = authenticate(\"user\", \"pass\"); }\n");
     for i in 200..400 {
@@ -355,7 +398,9 @@ fn check_credentials(u: &str, p: &str) -> bool { true }
     fs::write(bd.join("big_utils.rs"), &big_file).unwrap();
 
     // File C: Authentication in a config context (medium TF, medium doc)
-    fs::write(bd.join("config.yaml"), r#"
+    fs::write(
+        bd.join("config.yaml"),
+        r#"
 server:
   port: 8080
   host: 0.0.0.0
@@ -371,7 +416,9 @@ database:
   port: 5432
   name: myapp
   pool_size: 10
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
     // File D: DOCX with authentication content
     {
@@ -393,11 +440,15 @@ database:
     }
 
     // File E: No authentication mentions (noise)
-    fs::write(bd.join("models.rs"), r#"
+    fs::write(
+        bd.join("models.rs"),
+        r#"
 pub struct User { pub id: u64, pub name: String, pub email: String }
 pub struct Product { pub id: u64, pub title: String, pub price: f64 }
 pub struct Order { pub id: u64, pub user_id: u64, pub total: f64 }
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
     demo_bm25_ranking(bd);
 

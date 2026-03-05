@@ -6,7 +6,6 @@ use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 
-
 fn real_cat_path() -> &'static str {
     "/bin/cat"
 }
@@ -45,7 +44,11 @@ fn test_cat_basic_conformance() {
 
     assert_eq!(real_exit, bs_exit);
     assert_eq!(real_exit, 0);
-    assert_eq!(real_out, bs_out, "cat output mismatch:\nreal: {:?}\nbs:   {:?}", real_out, bs_out);
+    assert_eq!(
+        real_out, bs_out,
+        "cat output mismatch:\nreal: {:?}\nbs:   {:?}",
+        real_out, bs_out
+    );
 }
 
 /// cat multiple files — output concatenated
@@ -63,7 +66,11 @@ fn test_cat_multiple_files_conformance() {
     let (bs_exit, bs_out, _) = run_bitscout_cat(&[a_str, b_str], tmp.path());
 
     assert_eq!(real_exit, bs_exit);
-    assert_eq!(real_out, bs_out, "cat multi-file mismatch:\nreal: {:?}\nbs:   {:?}", real_out, bs_out);
+    assert_eq!(
+        real_out, bs_out,
+        "cat multi-file mismatch:\nreal: {:?}\nbs:   {:?}",
+        real_out, bs_out
+    );
 }
 
 /// cat with -n (line numbers) — format must match
@@ -97,9 +104,12 @@ fn test_cat_line_numbers_conformance() {
         let real_norm = rl.trim_start();
         let bs_norm = bl.trim_start();
         assert_eq!(
-            real_norm, bs_norm,
+            real_norm,
+            bs_norm,
             "Line {} mismatch:\n  real: {:?}\n  bs:   {:?}",
-            i + 1, rl, bl
+            i + 1,
+            rl,
+            bl
         );
     }
 }
@@ -108,12 +118,17 @@ fn test_cat_line_numbers_conformance() {
 #[test]
 fn test_cat_nonexistent_file_conformance() {
     let (real_exit, _, _) = run_real_cat(&["/tmp/nonexistent_bitscout_test_file_xyz"]);
-    let (bs_exit, _, bs_err) =
-        run_bitscout_cat(&["/tmp/nonexistent_bitscout_test_file_xyz"], Path::new("/tmp"));
+    let (bs_exit, _, bs_err) = run_bitscout_cat(
+        &["/tmp/nonexistent_bitscout_test_file_xyz"],
+        Path::new("/tmp"),
+    );
 
     assert_eq!(real_exit, 1);
     assert_eq!(bs_exit, 1);
-    assert!(!bs_err.is_empty(), "BitScout should have error message for nonexistent file");
+    assert!(
+        !bs_err.is_empty(),
+        "BitScout should have error message for nonexistent file"
+    );
 }
 
 /// cat empty file — output should be empty
@@ -128,8 +143,14 @@ fn test_cat_empty_file_conformance() {
     let (bs_exit, bs_out, _) = run_bitscout_cat(&[file_str], tmp.path());
 
     assert_eq!(real_exit, bs_exit);
-    assert!(real_out.is_empty(), "real cat should produce empty output for empty file");
-    assert_eq!(real_out, bs_out, "cat empty file output should match exactly");
+    assert!(
+        real_out.is_empty(),
+        "real cat should produce empty output for empty file"
+    );
+    assert_eq!(
+        real_out, bs_out,
+        "cat empty file output should match exactly"
+    );
 }
 
 /// cat file without trailing newline
@@ -147,7 +168,10 @@ fn test_cat_no_trailing_newline_conformance() {
     // Real cat preserves exact content (no trailing newline)
     assert_eq!(real_out, "no newline at end");
     // BitScout now matches real cat exactly
-    assert_eq!(real_out, bs_out, "cat no-trailing-newline should match exactly");
+    assert_eq!(
+        real_out, bs_out,
+        "cat no-trailing-newline should match exactly"
+    );
 }
 
 /// cat with relative path
@@ -177,7 +201,9 @@ fn test_cat_unsupported_flags_fallback() {
 fn test_cat_large_file_conformance() {
     let tmp = TempDir::new().unwrap();
     let file = tmp.path().join("large.txt");
-    let content: String = (0..1000).map(|i| format!("Line {}: some content here for testing\n", i)).collect();
+    let content: String = (0..1000)
+        .map(|i| format!("Line {}: some content here for testing\n", i))
+        .collect();
     fs::write(&file, &content).unwrap();
     let file_str = file.to_str().unwrap();
 
@@ -185,5 +211,11 @@ fn test_cat_large_file_conformance() {
     let (bs_exit, bs_out, _) = run_bitscout_cat(&[file_str], tmp.path());
 
     assert_eq!(real_exit, bs_exit);
-    assert_eq!(real_out, bs_out, "Large file content mismatch (real: {} bytes, bs: {} bytes)", real_out.len(), bs_out.len());
+    assert_eq!(
+        real_out,
+        bs_out,
+        "Large file content mismatch (real: {} bytes, bs: {} bytes)",
+        real_out.len(),
+        bs_out.len()
+    );
 }

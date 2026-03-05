@@ -13,7 +13,6 @@ use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -21,11 +20,7 @@ use tempfile::TempDir;
 /// Locate the real rg binary, skipping BitScout shims.
 fn real_rg_path() -> Option<String> {
     // Try common locations
-    let candidates = [
-        "/opt/homebrew/bin/rg",
-        "/usr/local/bin/rg",
-        "/usr/bin/rg",
-    ];
+    let candidates = ["/opt/homebrew/bin/rg", "/usr/local/bin/rg", "/usr/bin/rg"];
     for c in candidates {
         if Path::new(c).exists() {
             return Some(c.to_string());
@@ -261,7 +256,11 @@ fn test_rg_basic_search_conformance() {
     let (bs_exit, bs_out, _) = run_bitscout_rg(args, tmp.path());
 
     // Exit codes must match
-    assert_eq!(rg_exit, bs_exit, "Exit code mismatch: rg={}, bs={}", rg_exit, bs_exit);
+    assert_eq!(
+        rg_exit, bs_exit,
+        "Exit code mismatch: rg={}, bs={}",
+        rg_exit, bs_exit
+    );
     assert_eq!(rg_exit, 0);
 
     // Compare normalized line sets
@@ -377,7 +376,10 @@ fn test_rg_no_match_conformance() {
     assert_eq!(rg_exit, 1, "rg should exit 1 on no match");
     assert_eq!(bs_exit, 1, "BitScout should exit 1 on no match");
     assert!(rg_out.is_empty(), "rg stdout should be empty on no match");
-    assert!(bs_out.is_empty(), "BitScout stdout should be empty on no match");
+    assert!(
+        bs_out.is_empty(),
+        "BitScout stdout should be empty on no match"
+    );
 }
 
 /// Test: rg with --glob filter
@@ -511,7 +513,10 @@ fn test_rg_json_output_conformance() {
                 let lines_text = v["data"]["lines"]["text"].as_str()?;
                 // Normalize: strip path prefix and trailing newline
                 let mut norm_path = path
-                    .replace(tmp.path().canonicalize().unwrap().to_str().unwrap(), "<DIR>")
+                    .replace(
+                        tmp.path().canonicalize().unwrap().to_str().unwrap(),
+                        "<DIR>",
+                    )
                     .replace(tmp.path().to_str().unwrap(), "<DIR>");
                 if norm_path.starts_with("./") {
                     norm_path = format!("<DIR>/{}", &norm_path[2..]);
@@ -538,7 +543,10 @@ fn test_rg_json_output_conformance() {
                 let line_num = v["data"]["line_number"].as_u64()?;
                 let lines_text = v["data"]["lines"]["text"].as_str()?;
                 let mut norm_path = path
-                    .replace(tmp.path().canonicalize().unwrap().to_str().unwrap(), "<DIR>")
+                    .replace(
+                        tmp.path().canonicalize().unwrap().to_str().unwrap(),
+                        "<DIR>",
+                    )
                     .replace(tmp.path().to_str().unwrap(), "<DIR>");
                 if norm_path.starts_with("./") {
                     norm_path = format!("<DIR>/{}", &norm_path[2..]);
@@ -600,7 +608,8 @@ fn test_rg_context_conformance() {
                 parts.len() == 3 && parts[1].parse::<usize>().is_ok()
             })
             .map(|l| {
-                let mut s = l.replace(dir_s, "<DIR>")
+                let mut s = l
+                    .replace(dir_s, "<DIR>")
                     .replace(tmp.path().to_str().unwrap(), "<DIR>");
                 if s.starts_with("./") {
                     s = format!("<DIR>/{}", &s[2..]);
@@ -653,7 +662,11 @@ fn test_rg_exact_match_count() {
         .filter_map(|l| l.rsplit(':').next()?.trim().parse::<usize>().ok())
         .sum();
 
-    assert_eq!(rg_total, bs_total, "Total match counts differ: rg={}, bs={}", rg_total, bs_total);
+    assert_eq!(
+        rg_total, bs_total,
+        "Total match counts differ: rg={}, bs={}",
+        rg_total, bs_total
+    );
     // start_session appears in 2 lines (call + definition)
     assert_eq!(rg_total, 2, "Expected 2 matches for start_session");
 }
@@ -727,7 +740,9 @@ fn test_rg_all_accelerated_flags_no_crash() {
         assert!(
             exit == 0 || exit == 1,
             "Unexpected exit code {} for args {:?}, stderr: {}",
-            exit, args, err
+            exit,
+            args,
+            err
         );
     }
 }

@@ -17,14 +17,24 @@ pub struct GrepParsedArgs {
 }
 
 const KNOWN_BOOL: &[&str] = &[
-    "-r", "-R", "--recursive",
-    "-n", "--line-number",
-    "-i", "--ignore-case",
-    "-l", "--files-with-matches",
-    "-c", "--count",
-    "-H", "-h", "--no-filename",
-    "-w", "--word-regexp",
-    "-F", "--fixed-strings",
+    "-r",
+    "-R",
+    "--recursive",
+    "-n",
+    "--line-number",
+    "-i",
+    "--ignore-case",
+    "-l",
+    "--files-with-matches",
+    "-c",
+    "--count",
+    "-H",
+    "-h",
+    "--no-filename",
+    "-w",
+    "--word-regexp",
+    "-F",
+    "--fixed-strings",
 ];
 
 pub fn parse_grep_args(args: &[String]) -> Option<GrepParsedArgs> {
@@ -157,7 +167,9 @@ mod tests {
     #[test]
     fn test_basic_grep() {
         let args: Vec<String> = vec!["grep", "pattern", "."]
-            .into_iter().map(Into::into).collect();
+            .into_iter()
+            .map(Into::into)
+            .collect();
         let parsed = parse_grep_args(&args).unwrap();
         assert_eq!(parsed.pattern, "pattern");
         assert_eq!(parsed.paths, vec!["."]);
@@ -166,7 +178,9 @@ mod tests {
     #[test]
     fn test_combined_flags() {
         let args: Vec<String> = vec!["grep", "-ril", "pattern"]
-            .into_iter().map(Into::into).collect();
+            .into_iter()
+            .map(Into::into)
+            .collect();
         let parsed = parse_grep_args(&args).unwrap();
         assert!(parsed.case_insensitive);
         assert!(parsed.files_only);
@@ -175,7 +189,9 @@ mod tests {
     #[test]
     fn test_include_glob_equals() {
         let args: Vec<String> = vec!["grep", "-r", "--include=*.rs", "pattern"]
-            .into_iter().map(Into::into).collect();
+            .into_iter()
+            .map(Into::into)
+            .collect();
         let parsed = parse_grep_args(&args).unwrap();
         assert_eq!(parsed.include_glob.as_deref(), Some("*.rs"));
     }
@@ -183,7 +199,9 @@ mod tests {
     #[test]
     fn test_parse_grep_bm25_flag() {
         let args: Vec<String> = vec!["grep", "-r", "--bm25", "pattern", "."]
-            .into_iter().map(Into::into).collect();
+            .into_iter()
+            .map(Into::into)
+            .collect();
         let parsed = parse_grep_args(&args).unwrap();
         assert_eq!(parsed.bm25, Bm25Mode::Tf);
     }
@@ -191,7 +209,9 @@ mod tests {
     #[test]
     fn test_parse_grep_semantic_flag() {
         let args: Vec<String> = vec!["grep", "-r", "--semantic", "pattern", "."]
-            .into_iter().map(Into::into).collect();
+            .into_iter()
+            .map(Into::into)
+            .collect();
         let parsed = parse_grep_args(&args).unwrap();
         assert!(parsed.semantic);
     }
@@ -199,14 +219,18 @@ mod tests {
     #[test]
     fn test_unsupported_flag_returns_none() {
         let args: Vec<String> = vec!["grep", "-P", "pattern"]
-            .into_iter().map(Into::into).collect();
+            .into_iter()
+            .map(Into::into)
+            .collect();
         assert!(parse_grep_args(&args).is_none());
     }
 
     #[test]
     fn test_double_dash_separator() {
         let args: Vec<String> = vec!["grep", "-r", "--", "-pattern", "."]
-            .into_iter().map(Into::into).collect();
+            .into_iter()
+            .map(Into::into)
+            .collect();
         let parsed = parse_grep_args(&args).unwrap();
         assert_eq!(parsed.pattern, "-pattern");
         assert_eq!(parsed.paths, vec!["."]);

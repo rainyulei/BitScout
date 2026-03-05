@@ -11,7 +11,8 @@ pub fn extract_zip(data: &[u8]) -> Result<String, crate::Error> {
     let mut output = String::new();
 
     for i in 0..archive.len() {
-        let mut entry = archive.by_index(i)
+        let mut entry = archive
+            .by_index(i)
             .map_err(|e| crate::Error::Extract(format!("ZIP entry {i} error: {e}")))?;
 
         // Skip directories
@@ -101,9 +102,7 @@ mod tests {
 
     #[test]
     fn test_extract_zip_skips_directories() {
-        let zip_data = make_test_zip(&[
-            ("src/main.rs", b"fn main() {}"),
-        ]);
+        let zip_data = make_test_zip(&[("src/main.rs", b"fn main() {}")]);
         let result = extract_zip(&zip_data).unwrap();
         assert!(result.contains("fn main()"));
     }

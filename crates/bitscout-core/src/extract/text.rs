@@ -10,7 +10,8 @@ impl MmapContent {
     pub fn open(path: &Path) -> Result<Self, crate::Error> {
         let file = File::open(path).map_err(|e| crate::Error::Io(crate::clean_io_error(&e)))?;
         // SAFETY: We assume no other process modifies the file while mapped.
-        let mmap = unsafe { Mmap::map(&file) }.map_err(|e| crate::Error::Io(crate::clean_io_error(&e)))?;
+        let mmap =
+            unsafe { Mmap::map(&file) }.map_err(|e| crate::Error::Io(crate::clean_io_error(&e)))?;
         Ok(Self { mmap })
     }
 
@@ -48,7 +49,8 @@ mod tests {
 
     #[test]
     fn test_mmap_search_integration() {
-        let code = b"fn main() {\n    let auth = get_auth();\n    let session = start_session(auth);\n}\n";
+        let code =
+            b"fn main() {\n    let auth = get_auth();\n    let session = start_session(auth);\n}\n";
         let mut tmp = NamedTempFile::new().unwrap();
         tmp.write_all(code).unwrap();
         tmp.flush().unwrap();
@@ -58,7 +60,11 @@ mod tests {
         let matcher = crate::search::matcher::Matcher::new(&["auth", "session"]).unwrap();
         let matches = matcher.find_all(mmap_content.as_bytes());
 
-        assert!(matches.len() >= 2, "expected at least 2 matches, got {}", matches.len());
+        assert!(
+            matches.len() >= 2,
+            "expected at least 2 matches, got {}",
+            matches.len()
+        );
         // Verify we found both patterns
         let pattern_indices: std::collections::HashSet<usize> =
             matches.iter().map(|m| m.pattern_index).collect();

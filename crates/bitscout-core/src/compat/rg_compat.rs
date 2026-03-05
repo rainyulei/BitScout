@@ -1,5 +1,5 @@
-use crate::search::bm25::Bm25Mode;
 use super::rg_flags::{lookup_rg_flag, FlagKind};
+use crate::search::bm25::Bm25Mode;
 
 #[derive(Debug)]
 pub struct RgParsedArgs {
@@ -193,8 +193,8 @@ fn apply_bool_flag(parsed: &mut RgParsedArgs, flag: &str) {
         "-U" | "--multiline" => parsed.multiline = true,
         "--multiline-dotall" => parsed.multiline = true,
         "-F" | "--fixed-strings" => parsed.fixed_strings = true,
-        "--no-heading" | "--heading" | "--no-config" | "--no-ignore"
-        | "--hidden" | "--no-messages" => {}
+        "--no-heading" | "--heading" | "--no-config" | "--no-ignore" | "--hidden"
+        | "--no-messages" => {}
         _ => {}
     }
 }
@@ -234,8 +234,12 @@ mod tests {
     #[test]
     fn test_parse_rg_context_flags() {
         let args = vec![
-            "rg".into(), "-C".into(), "3".into(), "-i".into(),
-            "pattern".into(), "src/".into(),
+            "rg".into(),
+            "-C".into(),
+            "3".into(),
+            "-i".into(),
+            "pattern".into(),
+            "src/".into(),
         ];
         let parsed = parse_rg_args(&args).unwrap();
         assert_eq!(parsed.context_lines, 3);
@@ -246,8 +250,11 @@ mod tests {
     #[test]
     fn test_value_flag_not_mistaken_for_pattern() {
         let args = vec![
-            "rg".into(), "--max-depth".into(), "3".into(),
-            "real_pattern".into(), ".".into(),
+            "rg".into(),
+            "--max-depth".into(),
+            "3".into(),
+            "real_pattern".into(),
+            ".".into(),
         ];
         assert!(parse_rg_args(&args).is_none());
     }
@@ -267,7 +274,12 @@ mod tests {
 
     #[test]
     fn test_parse_rg_semantic_flag() {
-        let args = vec!["rg".into(), "--semantic".into(), "pattern".into(), ".".into()];
+        let args = vec![
+            "rg".into(),
+            "--semantic".into(),
+            "pattern".into(),
+            ".".into(),
+        ];
         let parsed = parse_rg_args(&args).unwrap();
         assert!(parsed.semantic);
     }
@@ -275,7 +287,10 @@ mod tests {
     #[test]
     fn test_glob_with_value() {
         let args = vec![
-            "rg".into(), "--glob".into(), "*.rs".into(), "pattern".into(),
+            "rg".into(),
+            "--glob".into(),
+            "*.rs".into(),
+            "pattern".into(),
         ];
         let parsed = parse_rg_args(&args).unwrap();
         assert_eq!(parsed.glob.as_deref(), Some("*.rs"));

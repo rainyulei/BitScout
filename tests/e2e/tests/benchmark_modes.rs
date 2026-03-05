@@ -106,22 +106,32 @@ fn bench_all_modes_comparison() {
 
     let modes: Vec<(&str, &str, Vec<&str>)> = vec![
         ("find -name '*.rs'", "find", vec![".", "-name", "*.rs"]),
-        ("fd -e rs",          "fd",   vec!["-e", "rs"]),
-        ("cat file",          "cat",  vec!["src/auth/mod.rs"]),
-        ("rg literal",        "rg",   vec!["-n", "authenticate", "."]),
-        ("rg regex",          "rg",   vec!["-n", regex_pat, "."]),
-        ("grep -rn",          "grep", vec!["-rn", "AuthError", "."]),
-        ("rg --bm25",         "rg",   vec!["--bm25", "-n", "token", "."]),
-        ("rg --bm25=full",    "rg",   vec!["--bm25=full", "-n", "token", "."]),
-        ("rg --semantic",     "rg",   vec!["--semantic", "-n", "authentication", "."]),
+        ("fd -e rs", "fd", vec!["-e", "rs"]),
+        ("cat file", "cat", vec!["src/auth/mod.rs"]),
+        ("rg literal", "rg", vec!["-n", "authenticate", "."]),
+        ("rg regex", "rg", vec!["-n", regex_pat, "."]),
+        ("grep -rn", "grep", vec!["-rn", "AuthError", "."]),
+        ("rg --bm25", "rg", vec!["--bm25", "-n", "token", "."]),
+        (
+            "rg --bm25=full",
+            "rg",
+            vec!["--bm25=full", "-n", "token", "."],
+        ),
+        (
+            "rg --semantic",
+            "rg",
+            vec!["--semantic", "-n", "authentication", "."],
+        ),
     ];
 
     eprintln!();
     eprintln!("================================================================");
     eprintln!("       BitScout Cold-Start Benchmark (no daemon)");
     eprintln!("================================================================");
-    eprintln!(" {:22} | {:>8} | {:>8} | {:>8} | {:>5}",
-        "Mode", "Avg(us)", "Min(us)", "Max(us)", "Lines");
+    eprintln!(
+        " {:22} | {:>8} | {:>8} | {:>8} | {:>5}",
+        "Mode", "Avg(us)", "Min(us)", "Max(us)", "Lines"
+    );
     eprintln!("----------------------------------------------------------------");
 
     for (label, cmd, args) in &modes {
@@ -141,8 +151,10 @@ fn bench_all_modes_comparison() {
         let min = times.iter().map(|d| d.as_micros()).min().unwrap();
         let max = times.iter().map(|d| d.as_micros()).max().unwrap();
 
-        eprintln!(" {:22} | {:>8} | {:>8} | {:>8} | {:>5}",
-            label, avg, min, max, last_lines);
+        eprintln!(
+            " {:22} | {:>8} | {:>8} | {:>8} | {:>5}",
+            label, avg, min, max, last_lines
+        );
     }
 
     eprintln!("================================================================");
@@ -162,16 +174,19 @@ fn bench_semantic_relevance_quality() {
     eprintln!("=== Semantic Search Relevance Quality ===");
 
     let queries = [
-        ("user login flow",          "Should rank auth files highest"),
-        ("database migration",       "Should find db/mod.rs"),
-        ("rate limiting middleware",  "Should find api/middleware.rs"),
-        ("JWT token validation",     "Should find auth/jwt.rs"),
-        ("session expiration",       "Should find auth/session.rs"),
+        ("user login flow", "Should rank auth files highest"),
+        ("database migration", "Should find db/mod.rs"),
+        ("rate limiting middleware", "Should find api/middleware.rs"),
+        ("JWT token validation", "Should find auth/jwt.rs"),
+        ("session expiration", "Should find auth/session.rs"),
     ];
 
     for (query, expected) in &queries {
         let args_owned: Vec<String> = vec![
-            "--semantic".into(), "-n".into(), query.to_string(), ".".into(),
+            "--semantic".into(),
+            "-n".into(),
+            query.to_string(),
+            ".".into(),
         ];
         let start = Instant::now();
         let resp = dispatch("rg", &args_owned, cwd);
@@ -205,7 +220,11 @@ fn bench_bm25_scoring_output() {
     // BM25-TF
     let (_, stdout, dur) = time_dispatch("rg", &["--bm25", "-n", "token", "."], cwd);
     eprintln!();
-    eprintln!("  rg --bm25 'token' ({}us, {} lines):", dur.as_micros(), count_lines(&stdout));
+    eprintln!(
+        "  rg --bm25 'token' ({}us, {} lines):",
+        dur.as_micros(),
+        count_lines(&stdout)
+    );
     for line in stdout.lines().take(8) {
         eprintln!("    {}", line);
     }
@@ -213,7 +232,11 @@ fn bench_bm25_scoring_output() {
     // BM25-Full (TF-IDF)
     let (_, stdout, dur) = time_dispatch("rg", &["--bm25=full", "-n", "token", "."], cwd);
     eprintln!();
-    eprintln!("  rg --bm25=full 'token' ({}us, {} lines):", dur.as_micros(), count_lines(&stdout));
+    eprintln!(
+        "  rg --bm25=full 'token' ({}us, {} lines):",
+        dur.as_micros(),
+        count_lines(&stdout)
+    );
     for line in stdout.lines().take(8) {
         eprintln!("    {}", line);
     }
@@ -221,7 +244,11 @@ fn bench_bm25_scoring_output() {
     // Semantic
     let (_, stdout, dur) = time_dispatch("rg", &["--semantic", "-n", "token", "."], cwd);
     eprintln!();
-    eprintln!("  rg --semantic 'token' ({}us, {} lines):", dur.as_micros(), count_lines(&stdout));
+    eprintln!(
+        "  rg --semantic 'token' ({}us, {} lines):",
+        dur.as_micros(),
+        count_lines(&stdout)
+    );
     for line in stdout.lines().take(8) {
         eprintln!("    {}", line);
     }

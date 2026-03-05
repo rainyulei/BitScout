@@ -509,7 +509,7 @@ fn test_grep_accuracy_report() {
         // (label, pattern, real_grep_extra_args, bs_extra_args)
         ("literal: authenticate", "authenticate", &["-rn"], &["-rn"]),
         ("literal: Session", "Session", &["-rn"], &["-rn"]),
-        ("regex: [0-9]+", "[0-9][0-9]*", &["-rn"], &["-rn"]),  // BRE for real grep
+        ("regex: [0-9]+", "[0-9][0-9]*", &["-rn"], &["-rn"]), // BRE for real grep
         ("regex: foo|bar (ERE)", "foo|bar", &["-rn", "-E"], &["-rn"]), // our engine is ERE-like
     ];
 
@@ -635,7 +635,10 @@ fn test_bm25_accuracy_report() {
                 let cs = canonical.to_str().unwrap();
                 let ds = dir.to_str().unwrap();
                 bm25_content_lines.insert(
-                    content.replace(cs, "<D>").replace(ds, "<D>").replace("//", "/")
+                    content
+                        .replace(cs, "<D>")
+                        .replace(ds, "<D>")
+                        .replace("//", "/"),
                 );
             }
         }
@@ -657,7 +660,10 @@ fn test_bm25_accuracy_report() {
                 let cs = canonical.to_str().unwrap();
                 let ds = dir.to_str().unwrap();
                 full_content_lines.insert(
-                    content.replace(cs, "<D>").replace(ds, "<D>").replace("//", "/")
+                    content
+                        .replace(cs, "<D>")
+                        .replace(ds, "<D>")
+                        .replace("//", "/"),
                 );
             }
         }
@@ -688,9 +694,12 @@ fn test_bm25_accuracy_report() {
             "║  {:<27} │ {:>5}   │ {:>5} {}  │ {:>5} {}   │ {:>5} {}        │ {:>12}  ║",
             label,
             real_lines.len(),
-            plain_lines.len(), p_mark,
-            bm25_content_lines.len(), b_mark,
-            full_content_lines.len(), f_mark,
+            plain_lines.len(),
+            p_mark,
+            bm25_content_lines.len(),
+            b_mark,
+            full_content_lines.len(),
+            f_mark,
             score_range
         );
     }
@@ -700,7 +709,10 @@ fn test_bm25_accuracy_report() {
     eprintln!("║  Score range shows min-max BM25 TF scores across all matching lines                           ║");
     eprintln!("╚═════════════════════════════════════════════════════════════════════════════════════════════════╝");
 
-    assert!(all_match, "BM25 mode changed the result set — should be identical to plain mode");
+    assert!(
+        all_match,
+        "BM25 mode changed the result set — should be identical to plain mode"
+    );
 }
 
 #[test]
@@ -712,7 +724,9 @@ fn test_bm25_score_differentiation() {
     fs::create_dir_all(tmp.path().join("src")).unwrap();
 
     // File A: high relevance for "token" (many occurrences)
-    fs::write(tmp.path().join("src/token_heavy.rs"), r#"
+    fs::write(
+        tmp.path().join("src/token_heavy.rs"),
+        r#"
 fn validate_token(token: &str) -> bool {
     let token_parts: Vec<&str> = token.split('.').collect();
     if token_parts.len() != 3 { return false; }
@@ -722,10 +736,14 @@ fn validate_token(token: &str) -> bool {
     verify_token_signature(token_header, token_payload, token_sig)
 }
 fn verify_token_signature(h: &str, p: &str, s: &str) -> bool { true }
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
     // File B: low relevance for "token" (one occurrence in many lines)
-    fs::write(tmp.path().join("src/misc.rs"), r#"
+    fs::write(
+        tmp.path().join("src/misc.rs"),
+        r#"
 fn main() {
     let config = load_config();
     let server = start_server();
@@ -750,12 +768,15 @@ fn get_auth_token() -> String { String::new() }
 fn register_handlers() {}
 fn bind_listener() {}
 fn start_listening() {}
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
     let (_, stdout) = run_bs("rg", &["--no-heading", "--bm25", "token", "."], tmp.path());
 
     // Parse scores per file
-    let mut file_scores: std::collections::HashMap<String, Vec<f64>> = std::collections::HashMap::new();
+    let mut file_scores: std::collections::HashMap<String, Vec<f64>> =
+        std::collections::HashMap::new();
     for line in stdout.lines().filter(|l| !l.is_empty()) {
         let s = line.trim_end();
         if let Some(bracket_end) = s.find(']') {
@@ -764,7 +785,8 @@ fn start_listening() {}
             // Extract filename from path:line:content
             if let Some(colon) = rest.find(':') {
                 let path = &rest[..colon];
-                let filename = Path::new(path).file_name()
+                let filename = Path::new(path)
+                    .file_name()
                     .map(|f| f.to_string_lossy().to_string())
                     .unwrap_or_default();
                 file_scores.entry(filename).or_default().push(score);
@@ -779,7 +801,12 @@ fn start_listening() {}
 
     for (file, scores) in &file_scores {
         let avg = scores.iter().sum::<f64>() / scores.len() as f64;
-        eprintln!("║  {:<20} │ lines: {:>2} │ avg score: {:.4}          ║", file, scores.len(), avg);
+        eprintln!(
+            "║  {:<20} │ lines: {:>2} │ avg score: {:.4}          ║",
+            file,
+            scores.len(),
+            avg
+        );
     }
     eprintln!("╚══════════════════════════════════════════════════════════════╝");
 
@@ -794,10 +821,14 @@ fn start_listening() {}
     let heavy_avg = heavy_scores.unwrap().iter().sum::<f64>() / heavy_scores.unwrap().len() as f64;
     let misc_avg = misc_scores.unwrap().iter().sum::<f64>() / misc_scores.unwrap().len() as f64;
 
-    eprintln!("\ntoken_heavy.rs avg: {:.4}, misc.rs avg: {:.4}", heavy_avg, misc_avg);
+    eprintln!(
+        "\ntoken_heavy.rs avg: {:.4}, misc.rs avg: {:.4}",
+        heavy_avg, misc_avg
+    );
     assert!(
         heavy_avg > misc_avg,
         "token_heavy.rs (avg={:.4}) should score higher than misc.rs (avg={:.4})",
-        heavy_avg, misc_avg
+        heavy_avg,
+        misc_avg
     );
 }

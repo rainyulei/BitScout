@@ -7,7 +7,6 @@ use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 
-
 fn real_find_path() -> Option<String> {
     for c in ["/usr/bin/find", "/opt/homebrew/bin/find"] {
         if Path::new(c).exists() {
@@ -82,11 +81,15 @@ fn assert_same_lines(label: &str, real: &BTreeSet<String>, bs: &BTreeSet<String>
         let mut msg = format!("\n=== {} MISMATCH ===\n", label);
         if !only_real.is_empty() {
             msg.push_str("Only in real:\n");
-            for l in &only_real { msg.push_str(&format!("  - {}\n", l)); }
+            for l in &only_real {
+                msg.push_str(&format!("  - {}\n", l));
+            }
         }
         if !only_bs.is_empty() {
             msg.push_str("Only in BitScout:\n");
-            for l in &only_bs { msg.push_str(&format!("  + {}\n", l)); }
+            for l in &only_bs {
+                msg.push_str(&format!("  + {}\n", l));
+            }
         }
         panic!("{}", msg);
     }
@@ -135,7 +138,9 @@ fn test_find_name_glob_conformance() {
             .lines()
             .filter(|l| !l.is_empty())
             .filter_map(|l| {
-                Path::new(l.trim()).file_name().map(|f| f.to_string_lossy().to_string())
+                Path::new(l.trim())
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
             })
             .collect()
     };
@@ -167,7 +172,9 @@ fn test_find_type_f_conformance() {
             .lines()
             .filter(|l| !l.is_empty())
             .filter_map(|l| {
-                Path::new(l.trim()).file_name().map(|f| f.to_string_lossy().to_string())
+                Path::new(l.trim())
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
             })
             .collect()
     };
@@ -212,7 +219,12 @@ fn test_find_type_d_conformance() {
         .into_iter()
         .filter(|n| {
             // Real find includes the root dir; skip temp dir name
-            let root_name = tmp.path().file_name().unwrap().to_string_lossy().to_string();
+            let root_name = tmp
+                .path()
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
             n != &root_name
         })
         .collect();
@@ -231,7 +243,8 @@ fn test_find_combined_name_type_conformance() {
     let dir_str = tmp.path().to_str().unwrap();
 
     let (real_exit, real_out, _) = run_real_cmd(&find, &[dir_str, "-name", "*.rs", "-type", "f"]);
-    let (bs_exit, bs_out, _) = run_bitscout("find", &[".", "-name", "*.rs", "-type", "f"], tmp.path());
+    let (bs_exit, bs_out, _) =
+        run_bitscout("find", &[".", "-name", "*.rs", "-type", "f"], tmp.path());
 
     assert_eq!(real_exit, bs_exit);
 
@@ -239,7 +252,11 @@ fn test_find_combined_name_type_conformance() {
         output
             .lines()
             .filter(|l| !l.is_empty())
-            .filter_map(|l| Path::new(l.trim()).file_name().map(|f| f.to_string_lossy().to_string()))
+            .filter_map(|l| {
+                Path::new(l.trim())
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+            })
             .collect()
     };
 
@@ -250,7 +267,11 @@ fn test_find_combined_name_type_conformance() {
 
 #[test]
 fn test_find_unsupported_flags_fallback() {
-    let (exit, _, err) = run_bitscout("find", &[".", "-exec", "echo", "{}", ";"], Path::new("/tmp"));
+    let (exit, _, err) = run_bitscout(
+        "find",
+        &[".", "-exec", "echo", "{}", ";"],
+        Path::new("/tmp"),
+    );
     assert_eq!(exit, FALLBACK_EXIT_CODE);
     assert!(err.contains("BITSCOUT_FALLBACK"));
 }
@@ -281,7 +302,11 @@ fn test_fd_basic_conformance() {
         output
             .lines()
             .filter(|l| !l.is_empty())
-            .filter_map(|l| Path::new(l.trim()).file_name().map(|f| f.to_string_lossy().to_string()))
+            .filter_map(|l| {
+                Path::new(l.trim())
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+            })
             .collect()
     };
 
@@ -311,7 +336,11 @@ fn test_fd_extension_conformance() {
         output
             .lines()
             .filter(|l| !l.is_empty())
-            .filter_map(|l| Path::new(l.trim()).file_name().map(|f| f.to_string_lossy().to_string()))
+            .filter_map(|l| {
+                Path::new(l.trim())
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+            })
             .collect()
     };
 
@@ -341,7 +370,11 @@ fn test_fd_type_file_conformance() {
         output
             .lines()
             .filter(|l| !l.is_empty())
-            .filter_map(|l| Path::new(l.trim()).file_name().map(|f| f.to_string_lossy().to_string()))
+            .filter_map(|l| {
+                Path::new(l.trim())
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+            })
             .collect()
     };
 

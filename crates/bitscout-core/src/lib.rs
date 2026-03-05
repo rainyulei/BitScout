@@ -1,10 +1,10 @@
-pub mod fs;
-pub mod search;
-pub mod extract;
 pub mod cache;
-pub mod protocol;
 pub mod compat;
 pub mod dispatch;
+pub mod extract;
+pub mod fs;
+pub mod protocol;
+pub mod search;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

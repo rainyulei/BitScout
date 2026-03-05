@@ -172,8 +172,7 @@ mod tests {
 
     #[test]
     fn test_parse_find_basic() {
-        let args: Vec<String> = vec!["find", "."]
-            .into_iter().map(String::from).collect();
+        let args: Vec<String> = vec!["find", "."].into_iter().map(String::from).collect();
         let parsed = parse_find_args(&args).unwrap();
         assert_eq!(parsed.search_dir, ".");
     }
@@ -181,7 +180,9 @@ mod tests {
     #[test]
     fn test_parse_find_name() {
         let args: Vec<String> = vec!["find", "src", "-name", "*.rs"]
-            .into_iter().map(String::from).collect();
+            .into_iter()
+            .map(String::from)
+            .collect();
         let parsed = parse_find_args(&args).unwrap();
         assert_eq!(parsed.search_dir, "src");
         assert_eq!(parsed.name_pattern.as_deref(), Some("*.rs"));
@@ -190,7 +191,9 @@ mod tests {
     #[test]
     fn test_parse_fd_basic() {
         let args: Vec<String> = vec!["fd", "pattern"]
-            .into_iter().map(String::from).collect();
+            .into_iter()
+            .map(String::from)
+            .collect();
         let parsed = parse_fd_args(&args).unwrap();
         assert_eq!(parsed.pattern.as_deref(), Some("pattern"));
     }
@@ -198,7 +201,9 @@ mod tests {
     #[test]
     fn test_parse_fd_extension() {
         let args: Vec<String> = vec!["fd", "-e", "rs"]
-            .into_iter().map(String::from).collect();
+            .into_iter()
+            .map(String::from)
+            .collect();
         let parsed = parse_fd_args(&args).unwrap();
         assert_eq!(parsed.extension.as_deref(), Some("rs"));
     }
@@ -206,7 +211,9 @@ mod tests {
     #[test]
     fn test_parse_find_unsupported_flag() {
         let args: Vec<String> = vec!["find", ".", "-maxdepth", "3"]
-            .into_iter().map(String::from).collect();
+            .into_iter()
+            .map(String::from)
+            .collect();
         assert!(parse_find_args(&args).is_none());
     }
 }

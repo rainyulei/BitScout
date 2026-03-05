@@ -209,9 +209,7 @@ impl SparseMatrix {
 /// Build a term×document TF-IDF sparse matrix from tokenized documents.
 ///
 /// Returns (matrix, vocabulary, idf_vector).
-pub fn build_term_doc_matrix(
-    docs: &[(PathBuf, String)],
-) -> (SparseMatrix, Vocabulary, Vec<f32>) {
+pub fn build_term_doc_matrix(docs: &[(PathBuf, String)]) -> (SparseMatrix, Vocabulary, Vec<f32>) {
     let num_docs = docs.len();
     let mut vocab = Vocabulary::new();
 
@@ -312,8 +310,8 @@ pub struct LsaComponents {
 /// `prev_sigma` are their singular values.
 fn power_iteration(
     a: &SparseMatrix,
-    prev_u: &[f32],   // prev_k * nrows, row-major (each row is a u_i)
-    prev_v: &[f32],   // prev_k * ncols, row-major (each row is a v_i)
+    prev_u: &[f32], // prev_k * nrows, row-major (each row is a u_i)
+    prev_v: &[f32], // prev_k * ncols, row-major (each row is a v_i)
     prev_sigma: &[f32],
     prev_k: usize,
     max_iter: usize,
@@ -403,11 +401,7 @@ fn power_iteration(
 }
 
 /// Truncated SVD via repeated power iteration with deflation.
-pub fn truncated_svd(
-    a: &SparseMatrix,
-    k: usize,
-    max_iter: usize,
-) -> LsaComponents {
+pub fn truncated_svd(a: &SparseMatrix, k: usize, max_iter: usize) -> LsaComponents {
     let nrows = a.nrows;
     let ncols = a.ncols;
 
@@ -421,15 +415,8 @@ pub fn truncated_svd(
     let mut rng = Xorshift128Plus::new(SEED);
 
     for i in 0..k {
-        let (u_i, sigma_i, v_i) = power_iteration(
-            a,
-            &all_u,
-            &all_v,
-            &all_sigma,
-            i,
-            max_iter,
-            &mut rng,
-        );
+        let (u_i, sigma_i, v_i) =
+            power_iteration(a, &all_u, &all_v, &all_sigma, i, max_iter, &mut rng);
 
         // If we hit a zero singular value, remaining components are zero too
         if sigma_i < 1e-10 {
@@ -681,16 +668,28 @@ mod tests {
     #[test]
     fn test_tfidf_weighting() {
         let docs = vec![
-            (PathBuf::from("a.rs"), "the the the common common rare".to_string()),
-            (PathBuf::from("b.rs"), "the the the common common common".to_string()),
-            (PathBuf::from("c.rs"), "the the the common common common".to_string()),
+            (
+                PathBuf::from("a.rs"),
+                "the the the common common rare".to_string(),
+            ),
+            (
+                PathBuf::from("b.rs"),
+                "the the the common common common".to_string(),
+            ),
+            (
+                PathBuf::from("c.rs"),
+                "the the the common common common".to_string(),
+            ),
         ];
 
         let (matrix, vocab, idf) = build_term_doc_matrix(&docs);
 
         // "the" appears in all 3 docs → IDF = ln(3/3) = 0
         let the_id = vocab.get("the").unwrap();
-        assert!((idf[the_id as usize]).abs() < 1e-6, "IDF of 'the' should be ~0");
+        assert!(
+            (idf[the_id as usize]).abs() < 1e-6,
+            "IDF of 'the' should be ~0"
+        );
 
         // "rare" appears in 1 doc → IDF = ln(3/1) = ln(3) ≈ 1.099
         let rare_id = vocab.get("rare").unwrap();
@@ -716,9 +715,7 @@ mod tests {
         };
 
         let mut rng = Xorshift128Plus::new(SEED);
-        let (u, sigma, v) = power_iteration(
-            &matrix, &[], &[], &[], 0, 50, &mut rng,
-        );
+        let (u, sigma, v) = power_iteration(&matrix, &[], &[], &[], 0, 50, &mut rng);
 
         assert!(
             (sigma - 5.0).abs() < 0.01,
@@ -739,10 +736,22 @@ mod tests {
     fn test_truncated_svd_reconstruction() {
         // Create a small matrix and verify low-rank approximation
         let docs = vec![
-            (PathBuf::from("a.rs"), "login auth user password".to_string()),
-            (PathBuf::from("b.rs"), "login auth session token".to_string()),
-            (PathBuf::from("c.rs"), "database query insert table".to_string()),
-            (PathBuf::from("d.rs"), "database schema migrate index".to_string()),
+            (
+                PathBuf::from("a.rs"),
+                "login auth user password".to_string(),
+            ),
+            (
+                PathBuf::from("b.rs"),
+                "login auth session token".to_string(),
+            ),
+            (
+                PathBuf::from("c.rs"),
+                "database query insert table".to_string(),
+            ),
+            (
+                PathBuf::from("d.rs"),
+                "database schema migrate index".to_string(),
+            ),
         ];
 
         let (matrix, _vocab, _idf) = build_term_doc_matrix(&docs);
@@ -782,19 +791,41 @@ mod tests {
 
         // With k=2 on a small 4-doc matrix, error should be reasonable
         // (not zero since we only keep 2 components, but much less than ||A||_F)
-        assert!(frob_err < 10.0, "Reconstruction error too large: {}", frob_err);
+        assert!(
+            frob_err < 10.0,
+            "Reconstruction error too large: {}",
+            frob_err
+        );
     }
 
     #[test]
     fn test_lsa_cooccurrence_similarity() {
         // "login" and "auth" co-occur in same files → should be similar
         let docs = vec![
-            (PathBuf::from("a.rs"), "login auth user credentials verify".to_string()),
-            (PathBuf::from("b.rs"), "login auth session token validate".to_string()),
-            (PathBuf::from("c.rs"), "login auth password hash bcrypt".to_string()),
-            (PathBuf::from("d.rs"), "database query insert select update".to_string()),
-            (PathBuf::from("e.rs"), "database schema migrate column index".to_string()),
-            (PathBuf::from("f.rs"), "database pool connection transaction".to_string()),
+            (
+                PathBuf::from("a.rs"),
+                "login auth user credentials verify".to_string(),
+            ),
+            (
+                PathBuf::from("b.rs"),
+                "login auth session token validate".to_string(),
+            ),
+            (
+                PathBuf::from("c.rs"),
+                "login auth password hash bcrypt".to_string(),
+            ),
+            (
+                PathBuf::from("d.rs"),
+                "database query insert select update".to_string(),
+            ),
+            (
+                PathBuf::from("e.rs"),
+                "database schema migrate column index".to_string(),
+            ),
+            (
+                PathBuf::from("f.rs"),
+                "database pool connection transaction".to_string(),
+            ),
         ];
 
         let scorer = LsaScorer::build(&docs, 4);
@@ -812,16 +843,26 @@ mod tests {
         assert!(
             login_auth_sim > login_db_sim,
             "login-auth ({:.4}) should be more similar than login-db ({:.4})",
-            login_auth_sim, login_db_sim
+            login_auth_sim,
+            login_db_sim
         );
     }
 
     #[test]
     fn test_query_foldin() {
         let docs = vec![
-            (PathBuf::from("auth.rs"), "login auth user password session token verify".to_string()),
-            (PathBuf::from("db.rs"), "database query select insert table row column".to_string()),
-            (PathBuf::from("net.rs"), "http server socket bind listen accept request".to_string()),
+            (
+                PathBuf::from("auth.rs"),
+                "login auth user password session token verify".to_string(),
+            ),
+            (
+                PathBuf::from("db.rs"),
+                "database query select insert table row column".to_string(),
+            ),
+            (
+                PathBuf::from("net.rs"),
+                "http server socket bind listen accept request".to_string(),
+            ),
         ];
 
         let scorer = LsaScorer::build(&docs, 3);
@@ -840,7 +881,10 @@ mod tests {
     #[test]
     fn test_deterministic() {
         let docs = vec![
-            (PathBuf::from("a.rs"), "login auth user password".to_string()),
+            (
+                PathBuf::from("a.rs"),
+                "login auth user password".to_string(),
+            ),
             (PathBuf::from("b.rs"), "database query table".to_string()),
         ];
 
@@ -855,7 +899,8 @@ mod tests {
             assert!(
                 (a - b).abs() < 1e-5,
                 "LSA should be deterministic: {} vs {}",
-                a, b
+                a,
+                b
             );
         }
 

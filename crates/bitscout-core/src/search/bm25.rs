@@ -31,7 +31,8 @@ impl Bm25Scorer {
     pub fn tf_score(&self, tf: usize, doc_len: usize) -> f64 {
         let tf = tf as f64;
         let doc_len = doc_len as f64;
-        (tf * (self.k1 + 1.0)) / (tf + self.k1 * (1.0 - self.b + self.b * doc_len / self.avg_doc_len))
+        (tf * (self.k1 + 1.0))
+            / (tf + self.k1 * (1.0 - self.b + self.b * doc_len / self.avg_doc_len))
     }
 
     /// Full BM25 score with IDF component.
@@ -55,7 +56,10 @@ mod tests {
         let scorer = Bm25Scorer::new(100, 50.0);
         let high = scorer.score(3, 40, 10);
         let low = scorer.score(1, 100, 10);
-        assert!(high > low, "3 hits in 40 tokens ({high}) should score higher than 1 hit in 100 tokens ({low})");
+        assert!(
+            high > low,
+            "3 hits in 40 tokens ({high}) should score higher than 1 hit in 100 tokens ({low})"
+        );
     }
 
     #[test]
@@ -63,7 +67,10 @@ mod tests {
         let scorer = Bm25Scorer::new(100, 50.0);
         let rare = scorer.score(2, 50, 1);
         let common = scorer.score(2, 50, 90);
-        assert!(rare > common, "df=1 ({rare}) should score higher than df=90 ({common})");
+        assert!(
+            rare > common,
+            "df=1 ({rare}) should score higher than df=90 ({common})"
+        );
     }
 
     #[test]
@@ -92,6 +99,9 @@ mod tests {
         // IDF for df=10, N=100
         let idf = ((100.0 - 10.0 + 0.5) / (10.0 + 0.5) + 1.0_f64).ln();
         let expected = idf * tf;
-        assert!((full - expected).abs() < 1e-10, "full ({full}) should equal idf*tf ({expected})");
+        assert!(
+            (full - expected).abs() < 1e-10,
+            "full ({full}) should equal idf*tf ({expected})"
+        );
     }
 }

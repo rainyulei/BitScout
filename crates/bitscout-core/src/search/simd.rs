@@ -17,12 +17,16 @@ pub fn weighted_accumulate(dst: &mut [f32], src: &[f32], weight: f32) {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
-            unsafe { return avx2::weighted_accumulate_avx2(dst, src, weight); }
+            unsafe {
+                return avx2::weighted_accumulate_avx2(dst, src, weight);
+            }
         }
     }
     #[cfg(target_arch = "aarch64")]
     {
-        unsafe { return neon::weighted_accumulate_neon(dst, src, weight); }
+        unsafe {
+            return neon::weighted_accumulate_neon(dst, src, weight);
+        }
     }
     #[allow(unreachable_code)]
     scalar::weighted_accumulate_scalar(dst, src, weight);
@@ -34,12 +38,16 @@ pub fn dot_product(a: &[f32], b: &[f32]) -> f32 {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
-            unsafe { return avx2::dot_product_avx2(a, b); }
+            unsafe {
+                return avx2::dot_product_avx2(a, b);
+            }
         }
     }
     #[cfg(target_arch = "aarch64")]
     {
-        unsafe { return neon::dot_product_neon(a, b); }
+        unsafe {
+            return neon::dot_product_neon(a, b);
+        }
     }
     #[allow(unreachable_code)]
     scalar::dot_product_scalar(a, b)
@@ -50,12 +58,16 @@ pub fn norm_sq(v: &[f32]) -> f32 {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
-            unsafe { return avx2::norm_sq_avx2(v); }
+            unsafe {
+                return avx2::norm_sq_avx2(v);
+            }
         }
     }
     #[cfg(target_arch = "aarch64")]
     {
-        unsafe { return neon::norm_sq_neon(v); }
+        unsafe {
+            return neon::norm_sq_neon(v);
+        }
     }
     #[allow(unreachable_code)]
     scalar::norm_sq_scalar(v)
@@ -264,7 +276,12 @@ mod tests {
         let b = vec![9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0];
         let result = dot_product(&a, &b);
         let expected: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-        assert!((result - expected).abs() < 1e-4, "{} != {}", result, expected);
+        assert!(
+            (result - expected).abs() < 1e-4,
+            "{} != {}",
+            result,
+            expected
+        );
     }
 
     #[test]
@@ -285,7 +302,8 @@ mod tests {
         assert!(
             (dot_simd - dot_scalar).abs() < 0.1,
             "dot: simd={} scalar={}",
-            dot_simd, dot_scalar
+            dot_simd,
+            dot_scalar
         );
 
         let norm_simd = norm_sq(&a);
@@ -293,7 +311,8 @@ mod tests {
         assert!(
             (norm_simd - norm_scalar).abs() < 0.1,
             "norm: simd={} scalar={}",
-            norm_simd, norm_scalar
+            norm_simd,
+            norm_scalar
         );
 
         let mut dst_simd = vec![0.0f32; n];
@@ -304,7 +323,9 @@ mod tests {
             assert!(
                 (dst_simd[i] - dst_scalar[i]).abs() < 1e-4,
                 "accumulate[{}]: simd={} scalar={}",
-                i, dst_simd[i], dst_scalar[i]
+                i,
+                dst_simd[i],
+                dst_scalar[i]
             );
         }
     }

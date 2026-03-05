@@ -52,9 +52,7 @@ impl FileTree {
                 name,
                 path,
                 size: metadata.len(),
-                mtime: metadata
-                    .modified()
-                    .unwrap_or(SystemTime::UNIX_EPOCH),
+                mtime: metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
                 is_dir: metadata.is_dir(),
             });
         }

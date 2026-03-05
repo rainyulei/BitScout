@@ -25,9 +25,15 @@ fn real_rg() -> Option<String> {
     None
 }
 
-fn real_grep() -> &'static str { "/usr/bin/grep" }
-fn real_find() -> &'static str { "/usr/bin/find" }
-fn real_cat() -> &'static str { "/bin/cat" }
+fn real_grep() -> &'static str {
+    "/usr/bin/grep"
+}
+fn real_find() -> &'static str {
+    "/usr/bin/find"
+}
+fn real_cat() -> &'static str {
+    "/bin/cat"
+}
 
 fn real_fd() -> Option<String> {
     for c in ["/opt/homebrew/bin/fd", "/usr/local/bin/fd", "/usr/bin/fd"] {
@@ -64,7 +70,12 @@ fn norm(output: &str, dir: &Path) -> BTreeSet<String> {
     output
         .lines()
         .filter(|l| !l.is_empty())
-        .map(|l| l.trim_end().replace(cs, "<D>").replace(ds, "<D>").replace("//", "/"))
+        .map(|l| {
+            l.trim_end()
+                .replace(cs, "<D>")
+                .replace(ds, "<D>")
+                .replace("//", "/")
+        })
         .collect()
 }
 
@@ -83,7 +94,11 @@ fn filenames(output: &str) -> BTreeSet<String> {
     output
         .lines()
         .filter(|l| !l.is_empty())
-        .filter_map(|l| Path::new(l.trim()).file_name().map(|f| f.to_string_lossy().to_string()))
+        .filter_map(|l| {
+            Path::new(l.trim())
+                .file_name()
+                .map(|f| f.to_string_lossy().to_string())
+        })
         .collect()
 }
 
@@ -94,7 +109,9 @@ fn create_large_corpus(dir: &Path) {
         fs::create_dir_all(dir.join(d)).unwrap();
     }
 
-    fs::write(dir.join("src/main.rs"), r#"use crate::auth;
+    fs::write(
+        dir.join("src/main.rs"),
+        r#"use crate::auth;
 use crate::api;
 
 fn main() {
@@ -114,9 +131,13 @@ fn start_server(config: &Config) -> Server {
 struct Config { port: u16, debug: bool }
 struct Server;
 impl Server { fn new(_port: u16) -> Self { Server } }
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
-    fs::write(dir.join("src/auth/mod.rs"), r#"pub mod token;
+    fs::write(
+        dir.join("src/auth/mod.rs"),
+        r#"pub mod token;
 pub mod session;
 
 pub fn authenticate_user(username: &str, password: &str) -> Result<Session, AuthError> {
@@ -131,9 +152,13 @@ pub fn verify_token(token: &str) -> bool {
 
 pub struct Session { pub id: String, pub user: String }
 pub struct AuthError(pub String);
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
-    fs::write(dir.join("src/auth/token.rs"), r#"use super::AuthError;
+    fs::write(
+        dir.join("src/auth/token.rs"),
+        r#"use super::AuthError;
 
 pub fn validate(input: &str) -> Result<String, AuthError> {
     if input.len() < 8 {
@@ -149,9 +174,13 @@ pub fn refresh(token: &str) -> Option<String> {
         None
     }
 }
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
-    fs::write(dir.join("src/auth/session.rs"), r#"use super::{AuthError, Session};
+    fs::write(
+        dir.join("src/auth/session.rs"),
+        r#"use super::{AuthError, Session};
 
 pub fn create(user: &str, token: &str) -> Result<Session, AuthError> {
     if !token.starts_with("tk_") {
@@ -163,9 +192,13 @@ pub fn create(user: &str, token: &str) -> Result<Session, AuthError> {
 pub fn destroy(session: &Session) {
     println!("Session {} destroyed", session.id);
 }
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
-    fs::write(dir.join("src/api/mod.rs"), r#"pub mod handlers;
+    fs::write(
+        dir.join("src/api/mod.rs"),
+        r#"pub mod handlers;
 
 use crate::auth;
 
@@ -176,9 +209,13 @@ pub fn authenticate_request(header: &str) -> bool {
         false
     }
 }
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
-    fs::write(dir.join("src/api/handlers.rs"), r#"use super::authenticate_request;
+    fs::write(
+        dir.join("src/api/handlers.rs"),
+        r#"use super::authenticate_request;
 
 pub fn handle_get(path: &str, auth_header: &str) -> Response {
     if !authenticate_request(auth_header) {
@@ -195,9 +232,13 @@ pub fn handle_post(path: &str, body: &str, auth_header: &str) -> Response {
 }
 
 pub struct Response { pub status: u16, pub body: String }
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
-    fs::write(dir.join("tests/test_auth.rs"), r#"#[test]
+    fs::write(
+        dir.join("tests/test_auth.rs"),
+        r#"#[test]
 fn test_authenticate_user_valid() {
     let result = authenticate_user("admin", "password123");
     assert!(result.is_ok());
@@ -218,9 +259,13 @@ fn test_verify_token_valid() {
 fn test_verify_token_invalid() {
     assert!(!verify_token("invalid"));
 }
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
-    fs::write(dir.join("tests/test_api.rs"), r#"#[test]
+    fs::write(
+        dir.join("tests/test_api.rs"),
+        r#"#[test]
 fn test_handle_get_authorized() {
     let resp = handle_get("/api/users", "Bearer tk_valid_token");
     assert_eq!(resp.status, 200);
@@ -231,13 +276,35 @@ fn test_handle_get_unauthorized() {
     let resp = handle_get("/api/users", "InvalidToken");
     assert_eq!(resp.status, 401);
 }
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
-    fs::write(dir.join("docs/README.md"), "# Project\n\nAuthentication system.\n").unwrap();
-    fs::write(dir.join("docs/API.md"), "# API Docs\n\nAll endpoints require Bearer token.\n").unwrap();
-    fs::write(dir.join("config/default.json"), r#"{"port": 8080, "debug": true, "auth": {"enabled": true}}"#).unwrap();
-    fs::write(dir.join("config/test.json"), r#"{"port": 9090, "debug": false, "auth": {"enabled": false}}"#).unwrap();
-    fs::write(dir.join("Cargo.toml"), "[package]\nname = \"myproject\"\nversion = \"0.1.0\"\n").unwrap();
+    fs::write(
+        dir.join("docs/README.md"),
+        "# Project\n\nAuthentication system.\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("docs/API.md"),
+        "# API Docs\n\nAll endpoints require Bearer token.\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("config/default.json"),
+        r#"{"port": 8080, "debug": true, "auth": {"enabled": true}}"#,
+    )
+    .unwrap();
+    fs::write(
+        dir.join("config/test.json"),
+        r#"{"port": 9090, "debug": false, "auth": {"enabled": false}}"#,
+    )
+    .unwrap();
+    fs::write(
+        dir.join("Cargo.toml"),
+        "[package]\nname = \"myproject\"\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
     fs::write(dir.join(".gitignore"), "target/\n*.swp\n").unwrap();
 }
 
@@ -248,7 +315,10 @@ fn test_handle_get_unauthorized() {
 #[test]
 fn test_rg_no_heading_basic() {
     // Claude Code's default: rg --no-heading pattern dir
-    let rg = match real_rg() { Some(p) => p, None => return };
+    let rg = match real_rg() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
     let d = tmp.path().to_str().unwrap();
@@ -256,39 +326,68 @@ fn test_rg_no_heading_basic() {
     let (re, ro, _) = run_cmd(&rg, &["--no-heading", "authenticate", d]);
     let (be, bo, _) = run_bs("rg", &["--no-heading", "authenticate", "."], tmp.path());
     assert_eq!(re, be);
-    assert_eq_lines("rg --no-heading", &norm(&ro, tmp.path()), &norm(&bo, tmp.path()));
+    assert_eq_lines(
+        "rg --no-heading",
+        &norm(&ro, tmp.path()),
+        &norm(&bo, tmp.path()),
+    );
 }
 
 #[test]
 fn test_rg_no_heading_with_n() {
-    let rg = match real_rg() { Some(p) => p, None => return };
+    let rg = match real_rg() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
     let d = tmp.path().to_str().unwrap();
 
     let (re, ro, _) = run_cmd(&rg, &["--no-heading", "-n", "authenticate", d]);
-    let (be, bo, _) = run_bs("rg", &["--no-heading", "-n", "authenticate", "."], tmp.path());
+    let (be, bo, _) = run_bs(
+        "rg",
+        &["--no-heading", "-n", "authenticate", "."],
+        tmp.path(),
+    );
     assert_eq!(re, be);
-    assert_eq_lines("rg --no-heading -n", &norm(&ro, tmp.path()), &norm(&bo, tmp.path()));
+    assert_eq_lines(
+        "rg --no-heading -n",
+        &norm(&ro, tmp.path()),
+        &norm(&bo, tmp.path()),
+    );
 }
 
 #[test]
 fn test_rg_files_with_matches_long() {
     // Claude Code uses --files-with-matches (long form)
-    let rg = match real_rg() { Some(p) => p, None => return };
+    let rg = match real_rg() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
     let d = tmp.path().to_str().unwrap();
 
     let (re, ro, _) = run_cmd(&rg, &["--files-with-matches", "authenticate", d]);
-    let (be, bo, _) = run_bs("rg", &["--files-with-matches", "authenticate", "."], tmp.path());
+    let (be, bo, _) = run_bs(
+        "rg",
+        &["--files-with-matches", "authenticate", "."],
+        tmp.path(),
+    );
     assert_eq!(re, be);
-    assert_eq_lines("rg --files-with-matches", &norm(&ro, tmp.path()), &norm(&bo, tmp.path()));
+    assert_eq_lines(
+        "rg --files-with-matches",
+        &norm(&ro, tmp.path()),
+        &norm(&bo, tmp.path()),
+    );
 }
 
 #[test]
 fn test_rg_count_long() {
-    let rg = match real_rg() { Some(p) => p, None => return };
+    let rg = match real_rg() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
     let d = tmp.path().to_str().unwrap();
@@ -301,7 +400,10 @@ fn test_rg_count_long() {
 
 #[test]
 fn test_rg_case_sensitive() {
-    let rg = match real_rg() { Some(p) => p, None => return };
+    let rg = match real_rg() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
     let d = tmp.path().to_str().unwrap();
@@ -309,12 +411,19 @@ fn test_rg_case_sensitive() {
     let (re, ro, _) = run_cmd(&rg, &["-s", "Session", d]);
     let (be, bo, _) = run_bs("rg", &["-s", "Session", "."], tmp.path());
     assert_eq!(re, be);
-    assert_eq_lines("rg -s (case sensitive)", &norm(&ro, tmp.path()), &norm(&bo, tmp.path()));
+    assert_eq_lines(
+        "rg -s (case sensitive)",
+        &norm(&ro, tmp.path()),
+        &norm(&bo, tmp.path()),
+    );
 }
 
 #[test]
 fn test_rg_smart_case() {
-    let rg = match real_rg() { Some(p) => p, None => return };
+    let rg = match real_rg() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
     let d = tmp.path().to_str().unwrap();
@@ -322,13 +431,20 @@ fn test_rg_smart_case() {
     let (re, ro, _) = run_cmd(&rg, &["-S", "authenticate", d]);
     let (be, bo, _) = run_bs("rg", &["-S", "authenticate", "."], tmp.path());
     assert_eq!(re, be);
-    assert_eq_lines("rg -S (smart case)", &norm(&ro, tmp.path()), &norm(&bo, tmp.path()));
+    assert_eq_lines(
+        "rg -S (smart case)",
+        &norm(&ro, tmp.path()),
+        &norm(&bo, tmp.path()),
+    );
 }
 
 #[test]
 fn test_rg_color_never() {
     // Common: rg --color=never pattern dir
-    let rg = match real_rg() { Some(p) => p, None => return };
+    let rg = match real_rg() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
     let d = tmp.path().to_str().unwrap();
@@ -336,47 +452,87 @@ fn test_rg_color_never() {
     let (re, ro, _) = run_cmd(&rg, &["--color=never", "authenticate", d]);
     let (be, bo, _) = run_bs("rg", &["--color=never", "authenticate", "."], tmp.path());
     assert_eq!(re, be);
-    assert_eq_lines("rg --color=never", &norm(&ro, tmp.path()), &norm(&bo, tmp.path()));
+    assert_eq_lines(
+        "rg --color=never",
+        &norm(&ro, tmp.path()),
+        &norm(&bo, tmp.path()),
+    );
 }
 
 #[test]
 fn test_rg_no_heading_color_never_n() {
     // Full Claude Code pattern: rg --no-heading --color=never -n pattern dir
-    let rg = match real_rg() { Some(p) => p, None => return };
+    let rg = match real_rg() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
     let d = tmp.path().to_str().unwrap();
 
-    let (re, ro, _) = run_cmd(&rg, &["--no-heading", "--color=never", "-n", "authenticate", d]);
-    let (be, bo, _) = run_bs("rg", &["--no-heading", "--color=never", "-n", "authenticate", "."], tmp.path());
+    let (re, ro, _) = run_cmd(
+        &rg,
+        &["--no-heading", "--color=never", "-n", "authenticate", d],
+    );
+    let (be, bo, _) = run_bs(
+        "rg",
+        &["--no-heading", "--color=never", "-n", "authenticate", "."],
+        tmp.path(),
+    );
     assert_eq!(re, be);
-    assert_eq_lines("rg --no-heading --color=never -n", &norm(&ro, tmp.path()), &norm(&bo, tmp.path()));
+    assert_eq_lines(
+        "rg --no-heading --color=never -n",
+        &norm(&ro, tmp.path()),
+        &norm(&bo, tmp.path()),
+    );
 }
 
 #[test]
 fn test_rg_glob_with_no_heading() {
-    let rg = match real_rg() { Some(p) => p, None => return };
+    let rg = match real_rg() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
     let d = tmp.path().to_str().unwrap();
 
     let (re, ro, _) = run_cmd(&rg, &["--no-heading", "--glob", "*.rs", "fn", d]);
-    let (be, bo, _) = run_bs("rg", &["--no-heading", "--glob", "*.rs", "fn", "."], tmp.path());
+    let (be, bo, _) = run_bs(
+        "rg",
+        &["--no-heading", "--glob", "*.rs", "fn", "."],
+        tmp.path(),
+    );
     assert_eq!(re, be);
-    assert_eq_lines("rg --no-heading --glob *.rs", &norm(&ro, tmp.path()), &norm(&bo, tmp.path()));
+    assert_eq_lines(
+        "rg --no-heading --glob *.rs",
+        &norm(&ro, tmp.path()),
+        &norm(&bo, tmp.path()),
+    );
 }
 
 #[test]
 fn test_rg_type_rust_no_heading() {
-    let rg = match real_rg() { Some(p) => p, None => return };
+    let rg = match real_rg() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
     let d = tmp.path().to_str().unwrap();
 
     let (re, ro, _) = run_cmd(&rg, &["--no-heading", "--type", "rust", "fn", d]);
-    let (be, bo, _) = run_bs("rg", &["--no-heading", "--type", "rust", "fn", "."], tmp.path());
+    let (be, bo, _) = run_bs(
+        "rg",
+        &["--no-heading", "--type", "rust", "fn", "."],
+        tmp.path(),
+    );
     assert_eq!(re, be);
-    assert_eq_lines("rg --no-heading --type rust", &norm(&ro, tmp.path()), &norm(&bo, tmp.path()));
+    assert_eq_lines(
+        "rg --no-heading --type rust",
+        &norm(&ro, tmp.path()),
+        &norm(&bo, tmp.path()),
+    );
 }
 
 // ===================================================================
@@ -398,22 +554,28 @@ fn test_grep_bare_single_file() {
     // grep single file without -H: no filename prefix
     // BitScout always uses SearchEngine which prefixes filenames
     // Compare just the content part
-    let real_content: BTreeSet<String> = ro.lines()
+    let real_content: BTreeSet<String> = ro
+        .lines()
         .filter(|l| !l.is_empty())
         .map(|l| l.trim_end().to_string())
         .collect();
-    let bs_content: BTreeSet<String> = bo.lines()
+    let bs_content: BTreeSet<String> = bo
+        .lines()
         .filter(|l| !l.is_empty())
         .map(|l| {
             // Strip filename: prefix if present
             if let Some(pos) = l.find(':') {
-                l[pos+1..].trim_end().to_string()
+                l[pos + 1..].trim_end().to_string()
             } else {
                 l.trim_end().to_string()
             }
         })
         .collect();
-    assert_eq_lines("grep bare single file (content)", &real_content, &bs_content);
+    assert_eq_lines(
+        "grep bare single file (content)",
+        &real_content,
+        &bs_content,
+    );
 }
 
 #[test]
@@ -431,7 +593,8 @@ fn test_grep_bare_with_n_single_file() {
     // grep -n single file: "linenum:content" (no filename)
     // Extract linenum:content from both
     let extract = |output: &str| -> BTreeSet<String> {
-        output.lines()
+        output
+            .lines()
             .filter(|l| !l.is_empty())
             .map(|l| {
                 let s = l.trim_end();
@@ -442,7 +605,7 @@ fn test_grep_bare_with_n_single_file() {
                     // Could be path:num:content or num:content (if content has :)
                     if parts[0].parse::<usize>().is_ok() {
                         // It's num:content:rest
-                        format!("{}:{}", parts[0], &s[parts[0].len()+1..])
+                        format!("{}:{}", parts[0], &s[parts[0].len() + 1..])
                     } else {
                         // It's path:num:content
                         format!("{}:{}", parts[1], parts[2])
@@ -508,7 +671,11 @@ fn test_grep_include_rs() {
     let (be, bo, _) = run_bs("grep", &["-rn", "--include=*.rs", "fn", "."], tmp.path());
 
     assert_eq!(re, be);
-    assert_eq_lines("grep --include=*.rs", &norm(&ro, tmp.path()), &norm(&bo, tmp.path()));
+    assert_eq_lines(
+        "grep --include=*.rs",
+        &norm(&ro, tmp.path()),
+        &norm(&bo, tmp.path()),
+    );
 }
 
 // ===================================================================
@@ -525,7 +692,11 @@ fn test_find_name_rs() {
     let (be, bo, _) = run_bs("find", &[".", "-name", "*.rs", "-type", "f"], tmp.path());
 
     assert_eq!(re, be);
-    assert_eq_lines("find -name *.rs -type f (filenames)", &filenames(&ro), &filenames(&bo));
+    assert_eq_lines(
+        "find -name *.rs -type f (filenames)",
+        &filenames(&ro),
+        &filenames(&bo),
+    );
 }
 
 #[test]
@@ -546,7 +717,10 @@ fn test_find_name_json() {
 
 #[test]
 fn test_fd_extension_rs() {
-    let fd = match real_fd() { Some(p) => p, None => return };
+    let fd = match real_fd() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
     let d = tmp.path().to_str().unwrap();
@@ -560,7 +734,10 @@ fn test_fd_extension_rs() {
 
 #[test]
 fn test_fd_pattern_auth() {
-    let fd = match real_fd() { Some(p) => p, None => return };
+    let fd = match real_fd() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
     let d = tmp.path().to_str().unwrap();
@@ -606,7 +783,12 @@ fn test_cat_with_n_source_file() {
     let bl: Vec<&str> = bo.lines().collect();
     assert_eq!(rl.len(), bl.len(), "cat -n line count mismatch");
     for (i, (r, b)) in rl.iter().zip(bl.iter()).enumerate() {
-        assert_eq!(r.trim_start(), b.trim_start(), "cat -n line {} mismatch", i+1);
+        assert_eq!(
+            r.trim_start(),
+            b.trim_start(),
+            "cat -n line {} mismatch",
+            i + 1
+        );
     }
 }
 
@@ -632,7 +814,10 @@ fn test_cat_multiple_source_files() {
 
 #[test]
 fn test_speed_rg_vs_bitscout() {
-    let rg = match real_rg() { Some(p) => p, None => return };
+    let rg = match real_rg() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
     let d = tmp.path().to_str().unwrap();
@@ -777,7 +962,10 @@ fn test_speed_cat_vs_bitscout() {
 #[test]
 fn test_rg_regex_fn_pattern() {
     // rg "fn\s+\w+" — the classic regex that broke before
-    let rg = match real_rg() { Some(p) => p, None => return };
+    let rg = match real_rg() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
     let d = tmp.path().to_str().unwrap();
@@ -785,27 +973,45 @@ fn test_rg_regex_fn_pattern() {
     let (re, ro, _) = run_cmd(&rg, &["--no-heading", r"fn\s+\w+", d]);
     let (be, bo, _) = run_bs("rg", &["--no-heading", r"fn\s+\w+", "."], tmp.path());
     assert_eq!(re, be, "exit code mismatch: real={} bs={}", re, be);
-    assert_eq_lines("rg fn\\s+\\w+", &norm(&ro, tmp.path()), &norm(&bo, tmp.path()));
+    assert_eq_lines(
+        "rg fn\\s+\\w+",
+        &norm(&ro, tmp.path()),
+        &norm(&bo, tmp.path()),
+    );
 }
 
 #[test]
 fn test_rg_regex_todo_fixme() {
-    let rg = match real_rg() { Some(p) => p, None => return };
+    let rg = match real_rg() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
     // Add a file with TODO/FIXME comments
-    fs::write(tmp.path().join("src/todo.rs"), "// TODO: fix auth\n// FIXME: session leak\n// NOTE: ok\n").unwrap();
+    fs::write(
+        tmp.path().join("src/todo.rs"),
+        "// TODO: fix auth\n// FIXME: session leak\n// NOTE: ok\n",
+    )
+    .unwrap();
     let d = tmp.path().to_str().unwrap();
 
     let (re, ro, _) = run_cmd(&rg, &["--no-heading", "TODO|FIXME", d]);
     let (be, bo, _) = run_bs("rg", &["--no-heading", "TODO|FIXME", "."], tmp.path());
     assert_eq!(re, be);
-    assert_eq_lines("rg TODO|FIXME", &norm(&ro, tmp.path()), &norm(&bo, tmp.path()));
+    assert_eq_lines(
+        "rg TODO|FIXME",
+        &norm(&ro, tmp.path()),
+        &norm(&bo, tmp.path()),
+    );
 }
 
 #[test]
 fn test_rg_regex_impl_pattern() {
-    let rg = match real_rg() { Some(p) => p, None => return };
+    let rg = match real_rg() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
     let d = tmp.path().to_str().unwrap();
@@ -813,12 +1019,19 @@ fn test_rg_regex_impl_pattern() {
     let (re, ro, _) = run_cmd(&rg, &["--no-heading", r"impl\s+\w+", d]);
     let (be, bo, _) = run_bs("rg", &["--no-heading", r"impl\s+\w+", "."], tmp.path());
     assert_eq!(re, be);
-    assert_eq_lines("rg impl\\s+\\w+", &norm(&ro, tmp.path()), &norm(&bo, tmp.path()));
+    assert_eq_lines(
+        "rg impl\\s+\\w+",
+        &norm(&ro, tmp.path()),
+        &norm(&bo, tmp.path()),
+    );
 }
 
 #[test]
 fn test_rg_regex_digits() {
-    let rg = match real_rg() { Some(p) => p, None => return };
+    let rg = match real_rg() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
     let d = tmp.path().to_str().unwrap();
@@ -832,16 +1045,27 @@ fn test_rg_regex_digits() {
 #[test]
 fn test_rg_fixed_strings() {
     // rg -F "fn\s" should match literal "fn\s", not regex
-    let rg = match real_rg() { Some(p) => p, None => return };
+    let rg = match real_rg() {
+        Some(p) => p,
+        None => return,
+    };
     let tmp = TempDir::new().unwrap();
     fs::create_dir_all(tmp.path().join("src")).unwrap();
-    fs::write(tmp.path().join("src/test.rs"), "let pat = r\"fn\\s+\";\nfn main() {}\n").unwrap();
+    fs::write(
+        tmp.path().join("src/test.rs"),
+        "let pat = r\"fn\\s+\";\nfn main() {}\n",
+    )
+    .unwrap();
     let d = tmp.path().to_str().unwrap();
 
     let (re, ro, _) = run_cmd(&rg, &["--no-heading", "-F", r"fn\s", d]);
     let (be, bo, _) = run_bs("rg", &["--no-heading", "-F", r"fn\s", "."], tmp.path());
     assert_eq!(re, be, "exit code: real={} bs={}", re, be);
-    assert_eq_lines("rg -F literal", &norm(&ro, tmp.path()), &norm(&bo, tmp.path()));
+    assert_eq_lines(
+        "rg -F literal",
+        &norm(&ro, tmp.path()),
+        &norm(&bo, tmp.path()),
+    );
 }
 
 // ===================================================================
@@ -857,7 +1081,11 @@ fn test_grep_regex_digits() {
     let (re, ro, _) = run_cmd(real_grep(), &["-rn", "[0-9][0-9]*", d]);
     let (be, bo, _) = run_bs("grep", &["-rn", "[0-9][0-9]*", "."], tmp.path());
     assert_eq!(re, be);
-    assert_eq_lines("grep [0-9]+", &norm(&ro, tmp.path()), &norm(&bo, tmp.path()));
+    assert_eq_lines(
+        "grep [0-9]+",
+        &norm(&ro, tmp.path()),
+        &norm(&bo, tmp.path()),
+    );
 }
 
 #[test]
@@ -868,7 +1096,11 @@ fn test_grep_regex_alternation() {
     // but BitScout grep without it (our regex engine handles | natively).
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
-    fs::write(tmp.path().join("src/notes.rs"), "// foo marker\n// bar marker\n// baz marker\n").unwrap();
+    fs::write(
+        tmp.path().join("src/notes.rs"),
+        "// foo marker\n// bar marker\n// baz marker\n",
+    )
+    .unwrap();
     let d = tmp.path().to_str().unwrap();
 
     // Real grep needs -E for ERE alternation
@@ -876,7 +1108,11 @@ fn test_grep_regex_alternation() {
     // BitScout grep uses Rust regex which supports | natively
     let (be, bo, _) = run_bs("grep", &["-rn", "foo|bar", "."], tmp.path());
     assert_eq!(re, be);
-    assert_eq_lines("grep foo|bar alternation", &norm(&ro, tmp.path()), &norm(&bo, tmp.path()));
+    assert_eq_lines(
+        "grep foo|bar alternation",
+        &norm(&ro, tmp.path()),
+        &norm(&bo, tmp.path()),
+    );
 }
 
 // ===================================================================
@@ -889,14 +1125,24 @@ fn test_rg_bm25_outputs_scores() {
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
 
-    let (exit, stdout, _) = run_bs("rg", &["--no-heading", "--bm25", "authenticate", "."], tmp.path());
+    let (exit, stdout, _) = run_bs(
+        "rg",
+        &["--no-heading", "--bm25", "authenticate", "."],
+        tmp.path(),
+    );
     assert_eq!(exit, 0);
     assert!(!stdout.is_empty(), "should have results");
     for line in stdout.lines().filter(|l| !l.is_empty()) {
-        assert!(line.starts_with('['), "line should start with [score]: {}", line);
+        assert!(
+            line.starts_with('['),
+            "line should start with [score]: {}",
+            line
+        );
         let bracket_end = line.find(']').expect("line should contain ]");
         let score_str = &line[1..bracket_end];
-        let score: f64 = score_str.parse().expect(&format!("invalid score: {}", score_str));
+        let score: f64 = score_str
+            .parse()
+            .expect(&format!("invalid score: {}", score_str));
         assert!(score > 0.0, "score should be positive: {}", score);
     }
 }
@@ -910,7 +1156,11 @@ fn test_rg_bm25_no_flag_no_scores() {
     let (exit, stdout, _) = run_bs("rg", &["--no-heading", "authenticate", "."], tmp.path());
     assert_eq!(exit, 0);
     for line in stdout.lines().filter(|l| !l.is_empty()) {
-        assert!(!line.starts_with('['), "should not have [score] prefix: {}", line);
+        assert!(
+            !line.starts_with('['),
+            "should not have [score] prefix: {}",
+            line
+        );
     }
 }
 
@@ -921,15 +1171,21 @@ fn test_rg_bm25_same_results_as_without() {
     create_large_corpus(tmp.path());
 
     let (_, stdout_plain, _) = run_bs("rg", &["--no-heading", "authenticate", "."], tmp.path());
-    let (_, stdout_bm25, _) = run_bs("rg", &["--no-heading", "--bm25", "authenticate", "."], tmp.path());
+    let (_, stdout_bm25, _) = run_bs(
+        "rg",
+        &["--no-heading", "--bm25", "authenticate", "."],
+        tmp.path(),
+    );
 
-    let plain_lines: BTreeSet<String> = stdout_plain.lines()
+    let plain_lines: BTreeSet<String> = stdout_plain
+        .lines()
         .filter(|l| !l.is_empty())
         .map(|l| l.trim_end().to_string())
         .collect();
 
     // Strip [score] prefix from bm25 output to get the actual content
-    let bm25_lines: BTreeSet<String> = stdout_bm25.lines()
+    let bm25_lines: BTreeSet<String> = stdout_bm25
+        .lines()
         .filter(|l| !l.is_empty())
         .map(|l| {
             let s = l.trim_end();
@@ -950,14 +1206,24 @@ fn test_rg_bm25_full_outputs_scores() {
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
 
-    let (exit, stdout, _) = run_bs("rg", &["--no-heading", "--bm25=full", "authenticate", "."], tmp.path());
+    let (exit, stdout, _) = run_bs(
+        "rg",
+        &["--no-heading", "--bm25=full", "authenticate", "."],
+        tmp.path(),
+    );
     assert_eq!(exit, 0);
     assert!(!stdout.is_empty(), "should have results");
     for line in stdout.lines().filter(|l| !l.is_empty()) {
-        assert!(line.starts_with('['), "line should start with [score]: {}", line);
+        assert!(
+            line.starts_with('['),
+            "line should start with [score]: {}",
+            line
+        );
         let bracket_end = line.find(']').expect("line should contain ]");
         let score_str = &line[1..bracket_end];
-        let score: f64 = score_str.parse().expect(&format!("invalid score: {}", score_str));
+        let score: f64 = score_str
+            .parse()
+            .expect(&format!("invalid score: {}", score_str));
         assert!(score > 0.0, "score should be positive: {}", score);
     }
 }
@@ -976,12 +1242,18 @@ fn test_rg_bm25_json_output() {
     for line in stdout.lines().filter(|l| !l.is_empty()) {
         let v: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
         if v["type"] == "match" {
-            assert!(v["data"]["bm25_score"].is_number(),
-                "match should have bm25_score: {}", line);
+            assert!(
+                v["data"]["bm25_score"].is_number(),
+                "match should have bm25_score: {}",
+                line
+            );
             found_score = true;
         }
     }
-    assert!(found_score, "should have at least one match with bm25_score");
+    assert!(
+        found_score,
+        "should have at least one match with bm25_score"
+    );
 }
 
 #[test]
@@ -996,8 +1268,11 @@ fn test_rg_bm25_json_no_flag_no_score() {
     for line in stdout.lines().filter(|l| !l.is_empty()) {
         let v: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
         if v["type"] == "match" {
-            assert!(v["data"]["bm25_score"].is_null(),
-                "match should NOT have bm25_score without --bm25: {}", line);
+            assert!(
+                v["data"]["bm25_score"].is_null(),
+                "match should NOT have bm25_score without --bm25: {}",
+                line
+            );
         }
     }
 }
@@ -1015,7 +1290,11 @@ fn test_grep_bm25_outputs_scores() {
     assert_eq!(exit, 0);
     assert!(!stdout.is_empty());
     for line in stdout.lines().filter(|l| !l.is_empty()) {
-        assert!(line.starts_with('['), "line should start with [score]: {}", line);
+        assert!(
+            line.starts_with('['),
+            "line should start with [score]: {}",
+            line
+        );
     }
 }
 
@@ -1027,7 +1306,11 @@ fn test_grep_bm25_no_flag_no_scores() {
     let (exit, stdout, _) = run_bs("grep", &["-rn", "authenticate", "."], tmp.path());
     assert_eq!(exit, 0);
     for line in stdout.lines().filter(|l| !l.is_empty()) {
-        assert!(!line.starts_with('['), "should not have [score] prefix: {}", line);
+        assert!(
+            !line.starts_with('['),
+            "should not have [score] prefix: {}",
+            line
+        );
     }
 }
 
@@ -1039,12 +1322,14 @@ fn test_grep_bm25_same_results_as_without() {
     let (_, stdout_plain, _) = run_bs("grep", &["-rn", "authenticate", "."], tmp.path());
     let (_, stdout_bm25, _) = run_bs("grep", &["-rn", "--bm25", "authenticate", "."], tmp.path());
 
-    let plain_lines: BTreeSet<String> = stdout_plain.lines()
+    let plain_lines: BTreeSet<String> = stdout_plain
+        .lines()
         .filter(|l| !l.is_empty())
         .map(|l| l.trim_end().to_string())
         .collect();
 
-    let bm25_lines: BTreeSet<String> = stdout_bm25.lines()
+    let bm25_lines: BTreeSet<String> = stdout_bm25
+        .lines()
         .filter(|l| !l.is_empty())
         .map(|l| {
             let s = l.trim_end();
@@ -1064,10 +1349,18 @@ fn test_grep_bm25_full_outputs_scores() {
     let tmp = TempDir::new().unwrap();
     create_large_corpus(tmp.path());
 
-    let (exit, stdout, _) = run_bs("grep", &["-rn", "--bm25=full", "authenticate", "."], tmp.path());
+    let (exit, stdout, _) = run_bs(
+        "grep",
+        &["-rn", "--bm25=full", "authenticate", "."],
+        tmp.path(),
+    );
     assert_eq!(exit, 0);
     assert!(!stdout.is_empty());
     for line in stdout.lines().filter(|l| !l.is_empty()) {
-        assert!(line.starts_with('['), "line should start with [score]: {}", line);
+        assert!(
+            line.starts_with('['),
+            "line should start with [score]: {}",
+            line
+        );
     }
 }

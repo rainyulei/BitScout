@@ -8,11 +8,13 @@ pub fn extract_xlsx(data: &[u8]) -> Result<String, crate::Error> {
     let mut archive = zip::ZipArchive::new(cursor)
         .map_err(|e| crate::Error::Extract(format!("XLSX ZIP open failed: {e}")))?;
 
-    let mut shared_strings = archive.by_name("xl/sharedStrings.xml")
+    let mut shared_strings = archive
+        .by_name("xl/sharedStrings.xml")
         .map_err(|_| crate::Error::Extract("xl/sharedStrings.xml not found in XLSX".into()))?;
 
     let mut xml_buf = Vec::new();
-    shared_strings.read_to_end(&mut xml_buf)
+    shared_strings
+        .read_to_end(&mut xml_buf)
         .map_err(|e| crate::Error::Extract(format!("XLSX read error: {e}")))?;
 
     parse_shared_strings(&xml_buf)
@@ -50,7 +52,9 @@ fn parse_shared_strings(xml: &[u8]) -> Result<String, crate::Error> {
     }
 
     if output.is_empty() {
-        return Err(crate::Error::Extract("No text content found in XLSX".into()));
+        return Err(crate::Error::Extract(
+            "No text content found in XLSX".into(),
+        ));
     }
 
     Ok(output)
@@ -77,7 +81,9 @@ mod tests {
         }
         xml.push_str("</sst>");
 
-        zip_writer.start_file("xl/sharedStrings.xml", options).unwrap();
+        zip_writer
+            .start_file("xl/sharedStrings.xml", options)
+            .unwrap();
         zip_writer.write_all(xml.as_bytes()).unwrap();
 
         zip_writer.finish().unwrap().into_inner()

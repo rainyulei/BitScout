@@ -5,9 +5,7 @@ pub fn extract_pdf(data: &[u8]) -> Result<String, crate::Error> {
     }
 
     // pdf-extract / cff-parser can panic on certain PDFs, so catch it
-    let result = std::panic::catch_unwind(|| {
-        pdf_extract::extract_text_from_mem(data)
-    });
+    let result = std::panic::catch_unwind(|| pdf_extract::extract_text_from_mem(data));
 
     let text = match result {
         Ok(Ok(t)) => t,
@@ -16,7 +14,9 @@ pub fn extract_pdf(data: &[u8]) -> Result<String, crate::Error> {
     };
 
     if text.trim().is_empty() {
-        return Err(crate::Error::Extract("PDF contains no extractable text".into()));
+        return Err(crate::Error::Extract(
+            "PDF contains no extractable text".into(),
+        ));
     }
 
     Ok(text)

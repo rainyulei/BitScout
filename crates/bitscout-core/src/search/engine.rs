@@ -114,7 +114,10 @@ impl SearchEngine {
         let mut results = Vec::new();
         let mut file_tf_map: Vec<(PathBuf, usize, usize)> = Vec::new();
 
-        let canonical_search_root = opts.search_root.as_ref().and_then(|p| p.canonicalize().ok());
+        let canonical_search_root = opts
+            .search_root
+            .as_ref()
+            .and_then(|p| p.canonicalize().ok());
 
         for entry in self.tree.files() {
             if let Some(ref root) = canonical_search_root {
@@ -165,7 +168,10 @@ impl SearchEngine {
 
                     let context_after: Vec<String> = if opts.context_lines > 0 {
                         let end = (idx + 1 + opts.context_lines).min(lines.len());
-                        lines[(idx + 1)..end].iter().map(|l| l.to_string()).collect()
+                        lines[(idx + 1)..end]
+                            .iter()
+                            .map(|l| l.to_string())
+                            .collect()
                     } else {
                         Vec::new()
                     };
@@ -187,7 +193,8 @@ impl SearchEngine {
             if let Some(ref scorer) = scorer {
                 let df = file_tf_map.len();
                 for r in &mut results {
-                    if let Some((_, tf, doc_len)) = file_tf_map.iter().find(|(p, _, _)| *p == r.path)
+                    if let Some((_, tf, doc_len)) =
+                        file_tf_map.iter().find(|(p, _, _)| *p == r.path)
                     {
                         r.bm25_score = Some(scorer.score(*tf, *doc_len, df));
                     }
@@ -208,7 +215,10 @@ impl SearchEngine {
     ) -> Result<Vec<SearchResult>, crate::Error> {
         use crate::search::lsa::LsaScorer;
 
-        let canonical_search_root = opts.search_root.as_ref().and_then(|p| p.canonicalize().ok());
+        let canonical_search_root = opts
+            .search_root
+            .as_ref()
+            .and_then(|p| p.canonicalize().ok());
 
         // Collect all documents for indexing
         let mut docs: Vec<(std::path::PathBuf, String)> = Vec::new();
@@ -292,7 +302,10 @@ impl SearchEngine {
                 };
                 let context_after: Vec<String> = if opts.context_lines > 0 {
                     let end = (idx + 1 + opts.context_lines).min(lines.len());
-                    lines[(idx + 1)..end].iter().map(|l| l.to_string()).collect()
+                    lines[(idx + 1)..end]
+                        .iter()
+                        .map(|l| l.to_string())
+                        .collect()
                 } else {
                     Vec::new()
                 };
@@ -538,9 +551,7 @@ mod tests {
 
         let engine = SearchEngine::new(root).unwrap();
 
-        let all = engine
-            .search("target", &SearchOptions::default())
-            .unwrap();
+        let all = engine.search("target", &SearchOptions::default()).unwrap();
         assert_eq!(all.len(), 2);
 
         let src_only = engine

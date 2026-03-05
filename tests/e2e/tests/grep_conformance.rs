@@ -7,9 +7,12 @@ use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 
-
 fn real_grep_path() -> Option<String> {
-    for c in ["/usr/bin/grep", "/opt/homebrew/bin/grep", "/usr/local/bin/grep"] {
+    for c in [
+        "/usr/bin/grep",
+        "/opt/homebrew/bin/grep",
+        "/usr/local/bin/grep",
+    ] {
         if Path::new(c).exists() {
             return Some(c.to_string());
         }
@@ -86,12 +89,14 @@ fn create_corpus(dir: &Path) {
     fs::write(
         src.join("lib.rs"),
         "pub fn authenticate_request(req: &str) -> bool {\n    req.contains(\"Bearer\")\n}\n",
-    ).unwrap();
+    )
+    .unwrap();
 
     fs::write(
         dir.join("README.md"),
         "# Test Project\n\nAuthenticate users via token.\n",
-    ).unwrap();
+    )
+    .unwrap();
 }
 
 #[test]

@@ -10,11 +10,13 @@ pub fn extract_docx(data: &[u8]) -> Result<String, crate::Error> {
         .map_err(|e| crate::Error::Extract(format!("DOCX ZIP open failed: {e}")))?;
 
     // Find word/document.xml
-    let mut doc_xml = archive.by_name("word/document.xml")
+    let mut doc_xml = archive
+        .by_name("word/document.xml")
         .map_err(|_| crate::Error::Extract("word/document.xml not found in DOCX".into()))?;
 
     let mut xml_buf = Vec::new();
-    doc_xml.read_to_end(&mut xml_buf)
+    doc_xml
+        .read_to_end(&mut xml_buf)
         .map_err(|e| crate::Error::Extract(format!("DOCX read error: {e}")))?;
 
     parse_docx_xml(&xml_buf)
@@ -79,7 +81,9 @@ fn parse_docx_xml(xml: &[u8]) -> Result<String, crate::Error> {
     }
 
     if output.is_empty() {
-        return Err(crate::Error::Extract("No text content found in DOCX".into()));
+        return Err(crate::Error::Extract(
+            "No text content found in DOCX".into(),
+        ));
     }
 
     Ok(output)
@@ -105,10 +109,7 @@ mod tests {
 <w:body>"#,
         );
         for para in paragraphs {
-            xml.push_str(&format!(
-                r#"<w:p><w:r><w:t>{}</w:t></w:r></w:p>"#,
-                para
-            ));
+            xml.push_str(&format!(r#"<w:p><w:r><w:t>{}</w:t></w:r></w:p>"#, para));
         }
         xml.push_str("</w:body></w:document>");
 
@@ -116,7 +117,9 @@ mod tests {
         zip_writer.write_all(xml.as_bytes()).unwrap();
 
         // Add [Content_Types].xml (required for valid DOCX)
-        zip_writer.start_file("[Content_Types].xml", options).unwrap();
+        zip_writer
+            .start_file("[Content_Types].xml", options)
+            .unwrap();
         zip_writer.write_all(br#"<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>"#).unwrap();
 
         zip_writer.finish().unwrap().into_inner()
@@ -157,8 +160,10 @@ mod tests {
         let docx_data = zip_writer.finish().unwrap().into_inner();
 
         let result = extract_docx(&docx_data).unwrap();
-        assert!(result.contains("Hello World") || result.contains("Hello  World"),
-            "Expected concatenated text, got: {result}");
+        assert!(
+            result.contains("Hello World") || result.contains("Hello  World"),
+            "Expected concatenated text, got: {result}"
+        );
     }
 
     #[test]

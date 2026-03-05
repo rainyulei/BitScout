@@ -8,10 +8,7 @@ use std::process;
 /// Detect if invoked via symlink as rg/grep/find/fd/cat.
 fn detect_busybox_command() -> Option<String> {
     let argv0 = env::args().next()?;
-    let name = Path::new(&argv0)
-        .file_name()?
-        .to_str()?
-        .to_string();
+    let name = Path::new(&argv0).file_name()?.to_str()?.to_string();
 
     match name.as_str() {
         "rg" | "grep" | "find" | "fd" | "cat" => Some(name),
@@ -82,7 +79,10 @@ fn exec_original(command: &str) -> ! {
 // ---------------------------------------------------------------------------
 
 #[derive(Parser)]
-#[command(name = "bitscout", about = "SIMD-accelerated search toolkit for AI Agents")]
+#[command(
+    name = "bitscout",
+    about = "SIMD-accelerated search toolkit for AI Agents"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -169,8 +169,9 @@ fn install_symlinks(target_dir: Option<&str>) {
         }
         #[cfg(unix)]
         {
-            std::os::unix::fs::symlink(&self_exe, &link)
-                .unwrap_or_else(|e| eprintln!("Failed to create symlink {}: {}", link.display(), e));
+            std::os::unix::fs::symlink(&self_exe, &link).unwrap_or_else(|e| {
+                eprintln!("Failed to create symlink {}: {}", link.display(), e)
+            });
         }
     }
 
