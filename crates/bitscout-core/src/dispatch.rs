@@ -355,7 +355,7 @@ fn handle_find_cmd(args: &[String], cwd: &str) -> SearchResponse {
             return SearchResponse {
                 exit_code: 1,
                 stdout: String::new(),
-                stderr: format!("find: {}: {}", parsed.search_dir, e),
+                stderr: format!("find: {}: {}", parsed.search_dir, crate::clean_io_error(&e)),
             }
         }
     };
@@ -442,7 +442,7 @@ fn handle_fd_cmd(args: &[String], cwd: &str) -> SearchResponse {
             return SearchResponse {
                 exit_code: 1,
                 stdout: String::new(),
-                stderr: format!("fd: {}: {}", parsed.search_dir, e),
+                stderr: format!("fd: {}: {}", parsed.search_dir, crate::clean_io_error(&e)),
             }
         }
     };
@@ -621,14 +621,14 @@ struct FindDirEntry {
 }
 
 fn walk_dir_recursive(root: &Path) -> Result<Vec<FindDirEntry>, String> {
-    let root = root.canonicalize().map_err(|e| e.to_string())?;
+    let root = root.canonicalize().map_err(|e| crate::clean_io_error(&e))?;
     let mut entries = Vec::new();
     let mut stack = vec![root.clone()];
 
     while let Some(dir) = stack.pop() {
-        let read_dir = std::fs::read_dir(&dir).map_err(|e| e.to_string())?;
+        let read_dir = std::fs::read_dir(&dir).map_err(|e| crate::clean_io_error(&e))?;
         for result in read_dir {
-            let entry = result.map_err(|e| e.to_string())?;
+            let entry = result.map_err(|e| crate::clean_io_error(&e))?;
             let path = entry.path();
             let is_dir = entry.file_type().map_or(false, |ft| ft.is_dir());
 

@@ -21,7 +21,7 @@ impl FileTree {
     /// Scan a directory tree, respecting `.gitignore` rules.
     pub fn scan(root: &Path) -> Result<Self, crate::Error> {
         let root = root.canonicalize().map_err(|e| {
-            crate::Error::Io(format!("{}: {}", root.display(), e))
+            crate::Error::Io(format!("{}: {}", root.display(), crate::clean_io_error(&e)))
         })?;
 
         let mut entries = Vec::new();
