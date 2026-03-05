@@ -98,7 +98,4 @@ case ":$PATH:" in
 esac
 
 echo ""
-echo "Done! Restart your shell or run:"
-echo "  source $RC"
-echo ""
-echo "Then verify: bitscout --help"
+echo "Done! Open a new terminal window, then run: bitscout --help"

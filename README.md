@@ -33,7 +33,7 @@ BitScout solves all three problems in a single binary:
 
 ```bash
 # One-line install (macOS / Linux)
-curl -fsSL https://raw.githubusercontent.com/rainyulei/BitScout/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/rainyulei/BitScout/main/install.sh | sh && exec $SHELL
 
 # Homebrew
 brew install rainyulei/tap/bitscout

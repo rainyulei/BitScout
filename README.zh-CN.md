@@ -33,7 +33,7 @@ BitScout 用一个二进制文件解决所有问题：
 
 ```bash
 # 一键安装（macOS / Linux）
-curl -fsSL https://raw.githubusercontent.com/rainyulei/BitScout/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/rainyulei/BitScout/main/install.sh | sh && exec $SHELL
 
 # Homebrew
 brew install rainyulei/tap/bitscout
