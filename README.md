@@ -29,18 +29,22 @@ BitScout solves all three problems in a single binary:
 | Cold-start overhead | fork+exec | ~0.1ms single binary |
 | Content caching | No | Yes (SHA256 CAS + LRU) |
 
+## Install
+
+```bash
+# One-line install (macOS / Linux)
+curl -fsSL https://raw.githubusercontent.com/rainyulei/BitScout/main/install.sh | sh
+
+# Homebrew
+brew install rainyulei/tap/bitscout
+
+# Build from source
+cargo build --release && ./target/release/bitscout install
+```
+
 ## Quick Start
 
 ```bash
-# Build
-cargo build --release
-
-# Install BusyBox-style symlinks
-./target/release/bitscout install
-
-# Or create symlinks manually
-ln -s target/release/bitscout target/release/rg
-
 # Use — fully compatible with rg/grep/find/fd/cat
 rg "fn main" src/
 grep -rn "TODO" .

@@ -29,18 +29,22 @@ BitScout 用一个二进制文件解决所有问题：
 | 冷启动开销 | fork+exec | ~0.1ms 单二进制 |
 | 内容缓存 | ✗ | ✓（SHA256 CAS + LRU）|
 
+## 安装
+
+```bash
+# 一键安装（macOS / Linux）
+curl -fsSL https://raw.githubusercontent.com/rainyulei/BitScout/main/install.sh | sh
+
+# Homebrew
+brew install rainyulei/tap/bitscout
+
+# 从源码构建
+cargo build --release && ./target/release/bitscout install
+```
+
 ## 快速开始
 
 ```bash
-# 构建
-cargo build --release
-
-# BusyBox 模式安装（创建 symlinks）
-./target/release/bitscout install
-
-# 或手动创建 symlink
-ln -s target/release/bitscout target/release/rg
-
 # 使用 — 与 rg/grep/find/fd/cat 完全兼容
 rg "fn main" src/
 grep -rn "TODO" .

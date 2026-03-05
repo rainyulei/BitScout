@@ -20,19 +20,14 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
-            archive: tar.gz
           - target: x86_64-unknown-linux-musl
             runner: ubuntu-latest
-            archive: tar.gz
           - target: aarch64-unknown-linux-gnu
             runner: ubuntu-latest
-            archive: tar.gz
           - target: x86_64-apple-darwin
             runner: macos-latest
-            archive: tar.gz
           - target: aarch64-apple-darwin
             runner: macos-latest
-            archive: tar.gz
 
     steps:
       - uses: actions/checkout@v4
@@ -103,3 +98,88 @@ jobs:
           files: |
             artifacts/*.tar.gz
             artifacts/SHA256SUMS.txt
+
+      - name: Update Homebrew formula
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "TAP_TOKEN not set, skipping Homebrew update"
+            exit 0
+          fi
+
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          cd artifacts
+
+          SHA_DARWIN_ARM64=$(sha256sum "bitscout-${TAG}-aarch64-apple-darwin.tar.gz" | cut -d' ' -f1)
+          SHA_DARWIN_X86=$(sha256sum "bitscout-${TAG}-x86_64-apple-darwin.tar.gz" | cut -d' ' -f1)
+          SHA_LINUX_ARM64=$(sha256sum "bitscout-${TAG}-aarch64-unknown-linux-gnu.tar.gz" | cut -d' ' -f1)
+          SHA_LINUX_X86=$(sha256sum "bitscout-${TAG}-x86_64-unknown-linux-musl.tar.gz" | cut -d' ' -f1)
+
+          cat > /tmp/bitscout.rb <<FORMULA
+          class Bitscout < Formula
+            desc "SIMD-accelerated search toolkit for AI Agents"
+            homepage "https://github.com/rainyulei/BitScout"
+            license "MIT"
+            version "${VERSION}"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/rainyulei/BitScout/releases/download/${TAG}/bitscout-${TAG}-aarch64-apple-darwin.tar.gz"
+                sha256 "${SHA_DARWIN_ARM64}"
+              end
+              on_intel do
+                url "https://github.com/rainyulei/BitScout/releases/download/${TAG}/bitscout-${TAG}-x86_64-apple-darwin.tar.gz"
+                sha256 "${SHA_DARWIN_X86}"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "https://github.com/rainyulei/BitScout/releases/download/${TAG}/bitscout-${TAG}-aarch64-unknown-linux-gnu.tar.gz"
+                sha256 "${SHA_LINUX_ARM64}"
+              end
+              on_intel do
+                url "https://github.com/rainyulei/BitScout/releases/download/${TAG}/bitscout-${TAG}-x86_64-unknown-linux-musl.tar.gz"
+                sha256 "${SHA_LINUX_X86}"
+              end
+            end
+
+            def install
+              bin.install "bitscout"
+            end
+
+            def post_install
+              %w[rg grep find fd cat].each do |cmd|
+                (bin/cmd).unlink if (bin/cmd).symlink?
+                (bin/cmd).make_symlink(bin/"bitscout")
+              end
+            end
+
+            def caveats
+              <<~EOS
+                BitScout symlinks (rg, grep, find, fd, cat) have been created in #{HOMEBREW_PREFIX}/bin.
+                These take priority over system commands when #{HOMEBREW_PREFIX}/bin is first in PATH.
+              EOS
+            end
+
+            test do
+              assert_match "bitscout", shell_output("#{bin}/bitscout --help")
+            end
+          end
+          FORMULA
+
+          # Remove leading whitespace from heredoc
+          sed -i 's/^          //' /tmp/bitscout.rb
+
+          cd /tmp
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/rainyulei/homebrew-tap.git"
+          cd homebrew-tap
+          mkdir -p Formula
+          cp /tmp/bitscout.rb Formula/bitscout.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/bitscout.rb
+          git commit -m "Update BitScout to ${TAG}" || echo "No changes"
+          git push
