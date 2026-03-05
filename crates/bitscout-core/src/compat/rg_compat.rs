@@ -95,7 +95,7 @@ pub fn parse_rg_args(args: &[String]) -> Option<RgParsedArgs> {
 
     while let Some(arg) = iter.next() {
         if arg == "--" {
-            positional.extend(iter.map(|s| s.clone()));
+            positional.extend(iter.cloned());
             break;
         }
 
@@ -109,8 +109,7 @@ pub fn parse_rg_args(args: &[String]) -> Option<RgParsedArgs> {
             parsed.bm25 = Bm25Mode::Tf;
             continue;
         }
-        if arg.starts_with("--bm25=") {
-            let value = &arg["--bm25=".len()..];
+        if let Some(value) = arg.strip_prefix("--bm25=") {
             parsed.bm25 = match value {
                 "full" => Bm25Mode::Full,
                 _ => Bm25Mode::Tf,
@@ -130,9 +129,7 @@ pub fn parse_rg_args(args: &[String]) -> Option<RgParsedArgs> {
             let flag_name = parts[0];
             let value = parts[1];
 
-            if lookup_rg_flag(flag_name).is_none() {
-                return None;
-            }
+            lookup_rg_flag(flag_name)?;
 
             if !is_accelerated(flag_name) {
                 return None;

@@ -63,8 +63,7 @@ pub fn parse_grep_args(args: &[String]) -> Option<GrepParsedArgs> {
             parsed.bm25 = Bm25Mode::Tf;
             continue;
         }
-        if arg.starts_with("--bm25=") {
-            let value = &arg["--bm25=".len()..];
+        if let Some(value) = arg.strip_prefix("--bm25=") {
             parsed.bm25 = match value {
                 "full" => Bm25Mode::Full,
                 _ => Bm25Mode::Tf,
@@ -79,8 +78,7 @@ pub fn parse_grep_args(args: &[String]) -> Option<GrepParsedArgs> {
         }
 
         // Handle --include=GLOB
-        if arg.starts_with("--include=") {
-            let value = &arg["--include=".len()..];
+        if let Some(value) = arg.strip_prefix("--include=") {
             parsed.include_glob = Some(value.to_string());
             continue;
         }
@@ -149,10 +147,7 @@ fn apply_bool_flag(parsed: &mut GrepParsedArgs, flag: &str) {
 }
 
 pub fn should_show_filename(parsed: &GrepParsedArgs) -> bool {
-    match parsed.show_filename {
-        Some(v) => v,
-        None => true,
-    }
+    parsed.show_filename.unwrap_or(true)
 }
 
 #[cfg(test)]

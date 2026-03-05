@@ -19,7 +19,7 @@ const VOCAB_SIZE: usize = 100_000;
 const PROJ_DIM: usize = 256;
 
 /// Fixed PRNG seed for reproducible projections.
-const SEED: u64 = 0xB175C007_2026_0001;
+const SEED: u64 = 0xB175_C007_2026_0001;
 
 // ---------------------------------------------------------------------------
 // xorshift128+ PRNG
@@ -75,6 +75,12 @@ pub struct Vocabulary {
     next_id: u32,
 }
 
+impl Default for Vocabulary {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Vocabulary {
     pub fn new() -> Self {
         Self {
@@ -109,6 +115,10 @@ impl Vocabulary {
     pub fn len(&self) -> usize {
         self.next_id as usize
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.next_id == 0
+    }
 }
 
 /// FNV-1a hash mod VOCAB_SIZE for feature hashing fallback.
@@ -136,6 +146,12 @@ pub struct ProjectionMatrix {
     generated_rows: usize,
     /// PRNG state (continues from last generated row).
     rng: Xorshift128Plus,
+}
+
+impl Default for ProjectionMatrix {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ProjectionMatrix {
@@ -198,6 +214,12 @@ fn tokenize(text: &str) -> Vec<&str> {
 pub struct RpScorer {
     vocab: Vocabulary,
     matrix: ProjectionMatrix,
+}
+
+impl Default for RpScorer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RpScorer {

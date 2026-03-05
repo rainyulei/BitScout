@@ -64,7 +64,7 @@ impl FileType {
                 "makefile", "dockerfile", "vagrantfile", "gemfile",
                 "rakefile", "procfile", "license", "readme", "changelog",
             ];
-            if text_filenames.iter().any(|n| basename == *n) {
+            if text_filenames.contains(&basename) {
                 return Self::PlainText;
             }
             // If header is valid UTF-8 and no NUL bytes, assume text

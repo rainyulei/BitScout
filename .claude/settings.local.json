@@ -5,7 +5,17 @@
       "Bash(cargo check:*)",
       "Bash(cargo test:*)",
       "Bash(cargo build:*)",
-      "Bash(cargo run:*)"
+      "Bash(cargo run:*)",
+      "Bash(gzip -c /Users/rainlei/holiday/BitScout/README.md)",
+      "Bash(export PATH=\"$HOME/.bitscout/shims:$PATH\")",
+      "Read(//private/tmp/**)",
+      "Bash(/Users/rainlei/holiday/BitScout/target/release/bitscout search:*)",
+      "Bash(/Users/rainlei/holiday/BitScout/target/release/bitscout:*)",
+      "Bash(~/.bitscout/shims/find:*)",
+      "Bash(git status:*)",
+      "Bash(git push:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(git add:*)"
     ]
   }
 }

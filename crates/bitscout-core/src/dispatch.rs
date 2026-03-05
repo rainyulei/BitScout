@@ -77,7 +77,6 @@ fn handle_rg(command: &str, args: &[String], cwd: &str) -> SearchResponse {
             bm25: parsed.bm25,
             semantic: parsed.semantic,
             search_root: Some(search_path),
-            ..SearchOptions::default()
         };
 
         match engine.search(&parsed.pattern, &opts) {
@@ -225,8 +224,8 @@ fn handle_grep(command: &str, args: &[String], cwd: &str) -> SearchResponse {
                 max_results: 100_000,
                 use_regex,
                 bm25: parsed.bm25,
+                semantic: parsed.semantic,
                 search_root: Some(search_path.clone()),
-                ..SearchOptions::default()
             };
 
             match engine.search(&effective_pattern, &opts) {
@@ -322,11 +321,9 @@ fn match_glob(pattern: &str, path: &Path) -> bool {
     if pattern.starts_with('*') && pattern.ends_with('*') && pattern.len() > 2 {
         let mid = &pattern[1..pattern.len() - 1];
         file_name.contains(mid)
-    } else if pattern.starts_with('*') {
-        let suffix = &pattern[1..];
+    } else if let Some(suffix) = pattern.strip_prefix('*') {
         file_name.ends_with(suffix)
-    } else if pattern.ends_with('*') {
-        let prefix = &pattern[..pattern.len() - 1];
+    } else if let Some(prefix) = pattern.strip_suffix('*') {
         file_name.starts_with(prefix)
     } else {
         file_name == pattern
@@ -630,7 +627,7 @@ fn walk_dir_recursive(root: &Path) -> Result<Vec<FindDirEntry>, String> {
         for result in read_dir {
             let entry = result.map_err(|e| crate::clean_io_error(&e))?;
             let path = entry.path();
-            let is_dir = entry.file_type().map_or(false, |ft| ft.is_dir());
+            let is_dir = entry.file_type().is_ok_and(|ft| ft.is_dir());
 
             entries.push(FindDirEntry {
                 path: path.clone(),

@@ -16,7 +16,7 @@ use super::simd;
 // ---------------------------------------------------------------------------
 
 /// Fixed PRNG seed for reproducible SVD initialization.
-const SEED: u64 = 0xB175C007_2026_0002;
+const SEED: u64 = 0xB175_C007_2026_0002;
 
 /// Maximum power iteration steps per singular component.
 const DEFAULT_MAX_ITER: usize = 15;
@@ -73,6 +73,12 @@ pub struct Vocabulary {
     next_id: u32,
 }
 
+impl Default for Vocabulary {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Vocabulary {
     pub fn new() -> Self {
         Self {
@@ -97,6 +103,10 @@ impl Vocabulary {
 
     pub fn len(&self) -> usize {
         self.next_id as usize
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.next_id == 0
     }
 }
 
@@ -168,14 +178,14 @@ impl SparseMatrix {
     pub fn mul_vec(&self, x: &[f32], y: &mut [f32]) {
         debug_assert_eq!(x.len(), self.ncols);
         debug_assert_eq!(y.len(), self.nrows);
-        for row in 0..self.nrows {
+        for (row, y_val) in y.iter_mut().enumerate().take(self.nrows) {
             let start = self.row_ptr[row];
             let end = self.row_ptr[row + 1];
             let mut sum = 0.0f32;
             for idx in start..end {
                 sum += self.values[idx] * x[self.col_idx[idx] as usize];
             }
-            y[row] = sum;
+            *y_val = sum;
         }
     }
 
@@ -183,10 +193,9 @@ impl SparseMatrix {
     pub fn mul_vec_transpose(&self, x: &[f32], y: &mut [f32]) {
         debug_assert_eq!(x.len(), self.nrows);
         debug_assert_eq!(y.len(), self.ncols);
-        for row in 0..self.nrows {
+        for (row, &x_row) in x.iter().enumerate().take(self.nrows) {
             let start = self.row_ptr[row];
             let end = self.row_ptr[row + 1];
-            let x_row = x[row];
             if x_row == 0.0 {
                 continue;
             }
@@ -337,11 +346,11 @@ fn power_iteration(
         a.mul_vec(&v, &mut tmp_u);
 
         // Deflation: u -= sum_i sigma_i * (prev_v_i . v) * prev_u_i
-        for i in 0..prev_k {
+        for (i, &sigma_i) in prev_sigma.iter().enumerate().take(prev_k) {
             let vi_start = i * ncols;
             let vi = &prev_v[vi_start..vi_start + ncols];
             let dot = simd::dot_product(vi, &v);
-            let coeff = prev_sigma[i] * dot;
+            let coeff = sigma_i * dot;
 
             let ui_start = i * nrows;
             let ui = &prev_u[ui_start..ui_start + nrows];
@@ -370,11 +379,11 @@ fn power_iteration(
         a.mul_vec_transpose(&u, &mut tmp_v);
 
         // Deflation: tmp_v -= sum_i sigma_i * (prev_u_i . u) * prev_v_i
-        for i in 0..prev_k {
+        for (i, &sigma_i) in prev_sigma.iter().enumerate().take(prev_k) {
             let ui_start = i * nrows;
             let ui = &prev_u[ui_start..ui_start + nrows];
             let dot = simd::dot_product(ui, &u);
-            let coeff = prev_sigma[i] * dot;
+            let coeff = sigma_i * dot;
 
             let vi_start = i * ncols;
             let vi = &prev_v[vi_start..vi_start + ncols];
@@ -425,11 +434,10 @@ pub fn truncated_svd(
         // If we hit a zero singular value, remaining components are zero too
         if sigma_i < 1e-10 {
             // Pad remaining with zeros
-            for _ in i..k {
-                all_u.extend(std::iter::repeat(0.0f32).take(nrows));
-                all_sigma.push(0.0);
-                all_v.extend(std::iter::repeat(0.0f32).take(ncols));
-            }
+            let remaining = k - i;
+            all_u.extend(std::iter::repeat_n(0.0f32, remaining * nrows));
+            all_sigma.extend(std::iter::repeat_n(0.0f32, remaining));
+            all_v.extend(std::iter::repeat_n(0.0f32, remaining * ncols));
             break;
         }
 
@@ -516,8 +524,8 @@ impl LsaScorer {
 
         for d in 0..num_docs {
             let mut vec_d = vec![0.0f32; k_actual];
-            for j in 0..k_actual {
-                vec_d[j] = components.v[j * num_docs + d];
+            for (j, val) in vec_d.iter_mut().enumerate().take(k_actual) {
+                *val = components.v[j * num_docs + d];
             }
             doc_vectors.push(vec_d);
         }
@@ -561,14 +569,14 @@ impl LsaScorer {
         // q_lsa[j] = (1/sigma_j) * sum_i(U[i,j] * q_tfidf[i])
         // U is stored as k rows of vocab_size each. U[j] starts at j * vocab_size.
         let mut q_lsa = vec![0.0f32; k];
-        for j in 0..k {
+        for (j, q_val) in q_lsa.iter_mut().enumerate().take(k) {
             let sigma = self.components.singular_values[j];
             if sigma < 1e-10 {
                 continue;
             }
             let u_j = &self.components.u[j * vocab_size..(j + 1) * vocab_size];
             let dot = simd::dot_product(u_j, &q_tfidf);
-            q_lsa[j] = dot / sigma;
+            *q_val = dot / sigma;
         }
 
         q_lsa
