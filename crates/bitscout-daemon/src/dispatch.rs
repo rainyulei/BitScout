@@ -1,7 +1,10 @@
+use bitscout_core::fs::tree::FileTree;
 use bitscout_core::protocol::{SearchRequest, SearchResponse};
+use bitscout_core::search::bm25::Bm25Mode;
 use bitscout_core::search::engine::{SearchEngine, SearchOptions, SearchResult};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
 
 use crate::grep_compat::{self, GrepParsedArgs};
 use crate::rg_compat::RgParsedArgs;
@@ -9,10 +12,10 @@ use crate::rg_compat::RgParsedArgs;
 /// Special exit code that tells the shim to fall back to the original command.
 pub const FALLBACK_EXIT_CODE: i32 = 200;
 
-pub fn dispatch(req: &SearchRequest) -> SearchResponse {
+pub fn dispatch(req: &SearchRequest, tree: &Arc<RwLock<FileTree>>) -> SearchResponse {
     match req.command.as_str() {
-        "rg" => handle_rg(req),
-        "grep" => handle_grep(req),
+        "rg" => handle_rg(req, tree),
+        "grep" => handle_grep(req, tree),
         "find" | "fd" => handle_find(req),
         "cat" => handle_cat(req),
         _ => fallback_response(&format!("unknown command: {}", req.command)),
@@ -27,7 +30,7 @@ fn fallback_response(reason: &str) -> SearchResponse {
     }
 }
 
-fn handle_rg(req: &SearchRequest) -> SearchResponse {
+fn handle_rg(req: &SearchRequest, tree: &Arc<RwLock<FileTree>>) -> SearchResponse {
     // Build args with command name prepended (parser expects argv[0])
     let mut full_args = vec![req.command.clone()];
     full_args.extend(req.args.iter().cloned());
@@ -39,35 +42,97 @@ fn handle_rg(req: &SearchRequest) -> SearchResponse {
 
     // Resolve search path relative to cwd
     let search_path = if Path::new(&parsed.path).is_absolute() {
-        parsed.path.clone()
+        PathBuf::from(&parsed.path)
     } else {
-        format!("{}/{}", req.cwd, parsed.path)
+        PathBuf::from(&req.cwd).join(&parsed.path)
     };
 
-    let engine = match SearchEngine::new(Path::new(&search_path)) {
-        Ok(e) => e,
-        Err(e) => {
-            return SearchResponse {
-                exit_code: 2,
-                stdout: String::new(),
-                stderr: format!("bitscout: {}", e),
+    let use_regex = !parsed.fixed_strings;
+
+    let results = if search_path.is_file() {
+        // Single file search: read and match directly
+        let text = match bitscout_core::extract::pipeline::extract_text(&search_path) {
+            Ok(t) => t,
+            Err(e) => {
+                return SearchResponse {
+                    exit_code: 2,
+                    stdout: String::new(),
+                    stderr: format!("rg: {}: {}", search_path.display(), e),
+                }
+            }
+        };
+        let matcher = match bitscout_core::search::matcher::Matcher::with_options(
+            &[&parsed.pattern],
+            bitscout_core::search::matcher::MatchOptions {
+                case_insensitive: parsed.case_insensitive,
+                use_regex,
+            },
+        ) {
+            Ok(m) => m,
+            Err(e) => {
+                return SearchResponse {
+                    exit_code: 2,
+                    stdout: String::new(),
+                    stderr: format!("rg: {}", e),
+                }
+            }
+        };
+        let bm25_score = if parsed.bm25 != Bm25Mode::Off {
+            let tf = matcher.find_all(text.as_bytes()).len();
+            let doc_len = text.len();
+            let scorer = bitscout_core::search::bm25::Bm25Scorer::new(1, doc_len as f64);
+            Some(scorer.tf_score(tf, doc_len))
+        } else {
+            None
+        };
+        let lines: Vec<&str> = text.lines().collect();
+        let context = parsed.before_context.max(parsed.after_context);
+        let mut file_results = Vec::new();
+        for (idx, line) in lines.iter().enumerate() {
+            if matcher.is_match(line.as_bytes()) {
+                let before = if context > 0 {
+                    lines[idx.saturating_sub(context)..idx]
+                        .iter().map(|s| s.to_string()).collect()
+                } else { Vec::new() };
+                let after = if context > 0 {
+                    lines[idx + 1..lines.len().min(idx + 1 + context)]
+                        .iter().map(|s| s.to_string()).collect()
+                } else { Vec::new() };
+                file_results.push(SearchResult {
+                    path: search_path.clone(),
+                    line_number: idx + 1,
+                    line_content: line.to_string(),
+                    context_before: before,
+                    context_after: after,
+                    bm25_score,
+                });
             }
         }
-    };
+        file_results
+    } else {
+        // Directory search — use the hot index
+        let engine = {
+            let t = tree.read().unwrap();
+            SearchEngine::from_tree(t.clone())
+        };
 
-    let opts = SearchOptions {
-        case_insensitive: parsed.case_insensitive,
-        context_lines: parsed.before_context.max(parsed.after_context),
-        max_results: 100_000,
-    };
+        let opts = SearchOptions {
+            case_insensitive: parsed.case_insensitive,
+            context_lines: parsed.before_context.max(parsed.after_context),
+            max_results: 100_000,
+            use_regex,
+            bm25: parsed.bm25,
+            search_root: Some(search_path),
+        };
 
-    let results = match engine.search(&parsed.pattern, &opts) {
-        Ok(r) => r,
-        Err(e) => {
-            return SearchResponse {
-                exit_code: 2,
-                stdout: String::new(),
-                stderr: format!("bitscout: {}", e),
+        match engine.search(&parsed.pattern, &opts) {
+            Ok(r) => r,
+            Err(e) => {
+                return SearchResponse {
+                    exit_code: 2,
+                    stdout: String::new(),
+                    stderr: format!("rg: {}", e),
+                }
             }
         }
     };
@@ -80,7 +145,7 @@ fn handle_rg(req: &SearchRequest) -> SearchResponse {
         };
     }
 
-    let stdout = format_rg_output(&parsed, &results);
+    let stdout = format_rg_output(&parsed, &results, parsed.bm25);
 
     SearchResponse {
         exit_code: 0,
@@ -89,7 +154,7 @@ fn handle_rg(req: &SearchRequest) -> SearchResponse {
     }
 }
 
-fn handle_grep(req: &SearchRequest) -> SearchResponse {
+fn handle_grep(req: &SearchRequest, tree: &Arc<RwLock<FileTree>>) -> SearchResponse {
     // Build args with command name prepended (parser expects argv[0])
     let mut full_args = vec![req.command.clone()];
     full_args.extend(req.args.iter().cloned());
@@ -100,8 +165,15 @@ fn handle_grep(req: &SearchRequest) -> SearchResponse {
     };
 
     // Build the effective pattern: wrap with word boundaries if -w
+    // When -w is used, we need regex mode for \b boundaries
+    let use_regex = !parsed.fixed_strings || parsed.word_regexp;
     let effective_pattern = if parsed.word_regexp {
-        format!(r"\b{}\b", parsed.pattern)
+        if parsed.fixed_strings {
+            // -F -w: escape the literal pattern, then wrap with \b
+            format!(r"\b{}\b", regex::escape(&parsed.pattern))
+        } else {
+            format!(r"\b(?:{})\b", parsed.pattern)
+        }
     } else {
         parsed.pattern.clone()
     };
@@ -131,6 +203,7 @@ fn handle_grep(req: &SearchRequest) -> SearchResponse {
                 &[&effective_pattern],
                 bitscout_core::search::matcher::MatchOptions {
                     case_insensitive: parsed.case_insensitive,
+                    use_regex,
                 },
             ) {
                 Ok(m) => m,
@@ -142,6 +215,15 @@ fn handle_grep(req: &SearchRequest) -> SearchResponse {
                     }
                 }
             };
+            // Compute BM25 score for single file
+            let bm25_score = if parsed.bm25 != Bm25Mode::Off {
+                let tf = matcher.find_all(text.as_bytes()).len();
+                let doc_len = text.len();
+                let scorer = bitscout_core::search::bm25::Bm25Scorer::new(1, doc_len as f64);
+                Some(scorer.tf_score(tf, doc_len))
+            } else {
+                None
+            };
             for (idx, line) in text.lines().enumerate() {
                 if matcher.is_match(line.as_bytes()) {
                     all_results.push(SearchResult {
@@ -150,26 +232,24 @@ fn handle_grep(req: &SearchRequest) -> SearchResponse {
                         line_content: line.to_string(),
                         context_before: Vec::new(),
                         context_after: Vec::new(),
+                        bm25_score,
                     });
                 }
             }
         } else {
-            // Directory search
-            let engine = match SearchEngine::new(&search_path) {
-                Ok(e) => e,
-                Err(e) => {
-                    return SearchResponse {
-                        exit_code: 2,
-                        stdout: String::new(),
-                        stderr: format!("grep: {}: {}", search_path.display(), e),
-                    }
-                }
+            // Directory search — use the hot index
+            let engine = {
+                let t = tree.read().unwrap();
+                SearchEngine::from_tree(t.clone())
             };
 
             let opts = SearchOptions {
                 case_insensitive: parsed.case_insensitive,
                 context_lines: 0,
                 max_results: 100_000,
+                use_regex,
+                bm25: parsed.bm25,
+                search_root: Some(search_path.clone()),
             };
 
             match engine.search(&effective_pattern, &opts) {
@@ -199,7 +279,7 @@ fn handle_grep(req: &SearchRequest) -> SearchResponse {
         };
     }
 
-    let stdout = format_grep_output(&parsed, &all_results);
+    let stdout = format_grep_output(&parsed, &all_results, parsed.bm25);
 
     SearchResponse {
         exit_code: 0,
@@ -235,7 +315,7 @@ fn match_glob(pattern: &str, path: &Path) -> bool {
     }
 }
 
-fn format_grep_output(parsed: &GrepParsedArgs, results: &[SearchResult]) -> String {
+fn format_grep_output(parsed: &GrepParsedArgs, results: &[SearchResult], bm25: Bm25Mode) -> String {
     let show_filename = grep_compat::should_show_filename(parsed);
 
     if parsed.files_only {
@@ -249,13 +329,23 @@ fn format_grep_output(parsed: &GrepParsedArgs, results: &[SearchResult]) -> Stri
     let mut output = String::new();
     for r in results {
         let path_str = r.path.display().to_string();
-        if show_filename && parsed.line_numbers {
-            output.push_str(&format!("{}:{}:{}\n", path_str, r.line_number, r.line_content));
-        } else if show_filename {
-            output.push_str(&format!("{}:{}\n", path_str, r.line_content));
-        } else if parsed.line_numbers {
-            output.push_str(&format!("{}:{}\n", r.line_number, r.line_content));
+        let prefix = if bm25 != Bm25Mode::Off {
+            if let Some(score) = r.bm25_score {
+                format!("[{:.2}] ", score)
+            } else {
+                String::new()
+            }
         } else {
+            String::new()
+        };
+        if show_filename && parsed.line_numbers {
+            output.push_str(&format!("{}{}:{}:{}\n", prefix, path_str, r.line_number, r.line_content));
+        } else if show_filename {
+            output.push_str(&format!("{}{}:{}\n", prefix, path_str, r.line_content));
+        } else if parsed.line_numbers {
+            output.push_str(&format!("{}{}:{}\n", prefix, r.line_number, r.line_content));
+        } else {
+            output.push_str(&prefix);
             output.push_str(&r.line_content);
             output.push('\n');
         }
@@ -445,12 +535,25 @@ fn handle_fd_cmd(req: &SearchRequest, full_args: &[String]) -> SearchResponse {
             }
         }
 
-        // Pattern filter (regex-like on filename)
+        // Pattern filter (regex on filename, or literal if -F)
         if let Some(ref pat) = parsed.pattern {
-            let matches = if parsed.ignore_case {
-                simple_regex_contains(&pat.to_lowercase(), &file_name.to_lowercase())
+            let matches = if parsed.fixed_strings {
+                // Literal substring match
+                if parsed.ignore_case {
+                    file_name.to_lowercase().contains(&pat.to_lowercase())
+                } else {
+                    file_name.contains(pat.as_str())
+                }
             } else {
-                simple_regex_contains(pat, &file_name)
+                // Real regex match
+                let re = match regex::RegexBuilder::new(pat)
+                    .case_insensitive(parsed.ignore_case)
+                    .build()
+                {
+                    Ok(r) => r,
+                    Err(_) => return fallback_response("fd: invalid regex pattern"),
+                };
+                re.is_match(&file_name)
             };
             if !matches {
                 continue;
@@ -546,64 +649,6 @@ fn walk_dir_recursive(root: &Path) -> Result<Vec<FindDirEntry>, String> {
     Ok(entries)
 }
 
-/// Simple regex-like substring matching for fd patterns.
-/// Supports literal substrings and basic `.` (any char) / `.*` (any sequence).
-fn simple_regex_contains(pattern: &str, text: &str) -> bool {
-    // If no regex metacharacters, do simple substring match
-    if !pattern.contains('.') && !pattern.contains('*') && !pattern.contains('\\')
-        && !pattern.contains('^') && !pattern.contains('$')
-    {
-        return text.contains(pattern);
-    }
-
-    // Convert to glob and use glob_match for the matching
-    let glob_pat = regex_to_glob(pattern);
-    crate::find_compat::glob_match(&glob_pat, text)
-}
-
-/// Convert basic regex syntax to glob syntax.
-/// Wraps with * on each end for unanchored matching.
-fn regex_to_glob(regex: &str) -> String {
-    let mut p = regex;
-    let anchored_start = p.starts_with('^');
-    if anchored_start { p = &p[1..]; }
-    let anchored_end = p.ends_with('$') && !p.ends_with("\\$");
-    if anchored_end { p = &p[..p.len() - 1]; }
-
-    let mut result = String::new();
-    if !anchored_start {
-        result.push('*');
-    }
-
-    let bytes = p.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'.' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
-                result.push('*');
-                i += 2;
-            }
-            b'.' => {
-                result.push('?');
-                i += 1;
-            }
-            b'\\' if i + 1 < bytes.len() => {
-                result.push(bytes[i + 1] as char);
-                i += 2;
-            }
-            c => {
-                result.push(c as char);
-                i += 1;
-            }
-        }
-    }
-
-    if !anchored_end {
-        result.push('*');
-    }
-    result
-}
-
 fn handle_cat(req: &SearchRequest) -> SearchResponse {
     // cat args are just file paths (may have -n for line numbers)
     let mut show_line_numbers = false;
@@ -664,9 +709,9 @@ fn handle_cat(req: &SearchRequest) -> SearchResponse {
 // rg output formatting
 // ---------------------------------------------------------------------------
 
-fn format_rg_output(parsed: &RgParsedArgs, results: &[SearchResult]) -> String {
+fn format_rg_output(parsed: &RgParsedArgs, results: &[SearchResult], bm25: Bm25Mode) -> String {
     if parsed.json_output {
-        return format_rg_json(results);
+        return format_rg_json(results, bm25);
     }
 
     if parsed.count_only {
@@ -679,23 +724,32 @@ fn format_rg_output(parsed: &RgParsedArgs, results: &[SearchResult]) -> String {
 
     // Default: line-by-line output like rg
     let mut output = String::new();
+    let score_prefix = |r: &SearchResult| -> String {
+        if bm25 != Bm25Mode::Off {
+            if let Some(score) = r.bm25_score {
+                return format!("[{:.2}] ", score);
+            }
+        }
+        String::new()
+    };
     for r in results {
         let path_str = r.path.display();
+        let prefix = score_prefix(r);
         // Context before
         for (i, ctx) in r.context_before.iter().enumerate() {
             let ctx_line = r.line_number - r.context_before.len() + i;
-            output.push_str(&format!("{}-{}-{}\n", path_str, ctx_line, ctx));
+            output.push_str(&format!("{}{}-{}-{}\n", prefix, path_str, ctx_line, ctx));
         }
         // Match line
         if parsed.line_numbers {
-            output.push_str(&format!("{}:{}:{}\n", path_str, r.line_number, r.line_content));
+            output.push_str(&format!("{}{}:{}:{}\n", prefix, path_str, r.line_number, r.line_content));
         } else {
-            output.push_str(&format!("{}:{}\n", path_str, r.line_content));
+            output.push_str(&format!("{}{}:{}\n", prefix, path_str, r.line_content));
         }
         // Context after
         for (i, ctx) in r.context_after.iter().enumerate() {
             let ctx_line = r.line_number + 1 + i;
-            output.push_str(&format!("{}-{}-{}\n", path_str, ctx_line, ctx));
+            output.push_str(&format!("{}{}-{}-{}\n", prefix, path_str, ctx_line, ctx));
         }
     }
     output
@@ -725,23 +779,29 @@ fn format_rg_files_only(results: &[SearchResult]) -> String {
     output
 }
 
-fn format_rg_json(results: &[SearchResult]) -> String {
+fn format_rg_json(results: &[SearchResult], bm25: Bm25Mode) -> String {
     // rg JSON output format: one JSON object per line
     let mut output = String::new();
     for r in results {
+        let mut data = serde_json::json!({
+            "path": { "text": r.path.display().to_string() },
+            "lines": { "text": &r.line_content },
+            "line_number": r.line_number,
+            "absolute_offset": 0,
+            "submatches": [{
+                "match": { "text": "" },
+                "start": 0,
+                "end": 0,
+            }],
+        });
+        if bm25 != Bm25Mode::Off {
+            if let Some(score) = r.bm25_score {
+                data["bm25_score"] = serde_json::json!(score);
+            }
+        }
         let json = serde_json::json!({
             "type": "match",
-            "data": {
-                "path": { "text": r.path.display().to_string() },
-                "lines": { "text": &r.line_content },
-                "line_number": r.line_number,
-                "absolute_offset": 0,
-                "submatches": [{
-                    "match": { "text": "" },
-                    "start": 0,
-                    "end": 0,
-                }],
-            }
+            "data": data,
         });
         output.push_str(&json.to_string());
         output.push('\n');
@@ -755,38 +815,55 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
+    /// Build a shared FileTree from a directory for testing.
+    fn test_tree(root: &Path) -> Arc<RwLock<FileTree>> {
+        Arc::new(RwLock::new(FileTree::scan(root).unwrap()))
+    }
+
+    /// Build a dummy tree (for tests that don't need real files).
+    fn dummy_tree() -> Arc<RwLock<FileTree>> {
+        let tmp = TempDir::new().unwrap();
+        // Leak the TempDir so it lives long enough (tests are short-lived)
+        let path = tmp.path().to_path_buf();
+        std::mem::forget(tmp);
+        Arc::new(RwLock::new(FileTree::scan(&path).unwrap()))
+    }
+
     #[test]
     fn test_dispatch_unknown_command_returns_fallback() {
+        let tree = dummy_tree();
         let req = SearchRequest {
             command: "unknown_cmd".into(),
             args: vec![],
             cwd: "/tmp".into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, FALLBACK_EXIT_CODE);
         assert!(resp.stderr.contains("BITSCOUT_FALLBACK"));
     }
 
     #[test]
     fn test_dispatch_grep_unsupported_flags_returns_fallback() {
+        let tree = dummy_tree();
         let req = SearchRequest {
             command: "grep".into(),
             args: vec!["-P".into(), "pattern".into()],
             cwd: "/tmp".into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, FALLBACK_EXIT_CODE);
         assert!(resp.stderr.contains("unsupported grep flags"));
     }
 
     #[test]
     fn test_dispatch_rg_unsupported_flags_returns_fallback() {
+        let tree = dummy_tree();
         let req = SearchRequest {
             command: "rg".into(),
             args: vec!["--pcre2".into(), "pattern".into()],
             cwd: "/tmp".into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, FALLBACK_EXIT_CODE);
         assert!(resp.stderr.contains("unsupported rg flags"));
     }
@@ -796,12 +873,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("hello.txt"), "hello world\ngoodbye world\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "rg".into(),
             args: vec!["hello".into(), ".".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("hello world"));
     }
@@ -811,12 +889,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("hello.txt"), "hello world\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "rg".into(),
             args: vec!["nonexistent_pattern_xyz".into(), ".".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 1);
         assert!(resp.stdout.is_empty());
     }
@@ -826,12 +905,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("data.txt"), "foo\nbar\nfoo\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "rg".into(),
             args: vec!["-c".into(), "foo".into(), ".".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains(":2"));
     }
@@ -842,12 +922,13 @@ mod tests {
         fs::write(tmp.path().join("a.txt"), "match\n").unwrap();
         fs::write(tmp.path().join("b.txt"), "match\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "rg".into(),
             args: vec!["-l".into(), "match".into(), ".".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Should list file paths, each on its own line
         let lines: Vec<&str> = resp.stdout.trim().lines().collect();
@@ -859,12 +940,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("num.txt"), "aaa\nbbb\nccc\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "rg".into(),
             args: vec!["-n".into(), "bbb".into(), ".".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Should contain path:line_number:content
         assert!(resp.stdout.contains(":2:bbb"));
@@ -875,12 +957,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("hello.txt"), "hello world\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "cat".into(),
             args: vec!["hello.txt".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert_eq!(resp.stdout, "hello world\n");
         assert!(resp.stderr.is_empty());
@@ -891,12 +974,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("lines.txt"), "aaa\nbbb\nccc\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "cat".into(),
             args: vec!["-n".into(), "lines.txt".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("1\taaa"));
         assert!(resp.stdout.contains("2\tbbb"));
@@ -909,36 +993,39 @@ mod tests {
         fs::write(tmp.path().join("a.txt"), "file a\n").unwrap();
         fs::write(tmp.path().join("b.txt"), "file b\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "cat".into(),
             args: vec!["a.txt".into(), "b.txt".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert_eq!(resp.stdout, "file a\nfile b\n");
     }
 
     #[test]
     fn test_dispatch_cat_no_files() {
+        let tree = dummy_tree();
         let req = SearchRequest {
             command: "cat".into(),
             args: vec![],
             cwd: "/tmp".into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, FALLBACK_EXIT_CODE);
         assert!(resp.stderr.contains("no files specified"));
     }
 
     #[test]
     fn test_dispatch_cat_unsupported_flag() {
+        let tree = dummy_tree();
         let req = SearchRequest {
             command: "cat".into(),
             args: vec!["-v".into(), "file.txt".into()],
             cwd: "/tmp".into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, FALLBACK_EXIT_CODE);
         assert!(resp.stderr.contains("unsupported cat flag"));
     }
@@ -946,12 +1033,13 @@ mod tests {
     #[test]
     fn test_dispatch_cat_nonexistent_file() {
         let tmp = TempDir::new().unwrap();
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "cat".into(),
             args: vec!["nonexistent.txt".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 1);
         assert!(resp.stderr.contains("nonexistent.txt"));
     }
@@ -962,12 +1050,13 @@ mod tests {
         let file_path = tmp.path().join("abs.txt");
         fs::write(&file_path, "absolute content\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "cat".into(),
             args: vec![file_path.to_str().unwrap().into()],
             cwd: "/tmp".into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert_eq!(resp.stdout, "absolute content\n");
     }
@@ -977,12 +1066,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("no_newline.txt"), "no trailing newline").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "cat".into(),
             args: vec!["no_newline.txt".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Match real cat behavior: preserve exact content
         assert_eq!(resp.stdout, "no trailing newline");
@@ -993,12 +1083,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("j.txt"), "target_line\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "rg".into(),
             args: vec!["--json".into(), "target_line".into(), ".".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Each line should be valid JSON
         for line in resp.stdout.trim().lines() {
@@ -1016,12 +1107,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("hello.txt"), "hello world\ngoodbye world\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: vec!["-r".into(), "hello".into(), ".".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("hello world"));
     }
@@ -1031,12 +1123,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("hello.txt"), "hello world\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: vec!["-r".into(), "nonexistent_xyz".into(), ".".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 1);
         assert!(resp.stdout.is_empty());
     }
@@ -1046,12 +1139,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("num.txt"), "aaa\nbbb\nccc\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: vec!["-rn".into(), "bbb".into(), ".".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Should contain filename:line_number:content
         assert!(resp.stdout.contains(":2:bbb"));
@@ -1062,12 +1156,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("case.txt"), "Hello World\nhello world\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: vec!["-ri".into(), "HELLO".into(), ".".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Both lines should match
         let lines: Vec<&str> = resp.stdout.trim().lines().collect();
@@ -1080,12 +1175,13 @@ mod tests {
         fs::write(tmp.path().join("a.txt"), "match line\n").unwrap();
         fs::write(tmp.path().join("b.txt"), "match line\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: vec!["-rl".into(), "match".into(), ".".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         let lines: Vec<&str> = resp.stdout.trim().lines().collect();
         assert_eq!(lines.len(), 2);
@@ -1096,12 +1192,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("data.txt"), "foo\nbar\nfoo\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: vec!["-rc".into(), "foo".into(), ".".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains(":2"));
     }
@@ -1111,12 +1208,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("test.txt"), "hello\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: vec!["-rh".into(), "hello".into(), ".".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Should not contain any path separator
         assert_eq!(resp.stdout.trim(), "hello");
@@ -1128,6 +1226,7 @@ mod tests {
         fs::write(tmp.path().join("code.rs"), "fn main() {}\n").unwrap();
         fs::write(tmp.path().join("notes.txt"), "fn notes\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: vec![
@@ -1138,7 +1237,7 @@ mod tests {
             ],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Should only match the .rs file
         assert!(resp.stdout.contains("code.rs"));
@@ -1150,12 +1249,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("file.txt"), "target\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: vec!["-r".into(), "target".into(), ".".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Default output: filename:content
         assert!(resp.stdout.contains("file.txt:target"));
@@ -1204,12 +1304,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         create_find_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "find".into(),
             args: vec![".".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Should contain all files and dirs
         assert!(resp.stdout.contains("main.rs"));
@@ -1222,12 +1323,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         create_find_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "find".into(),
             args: vec![".".into(), "-name".into(), "*.rs".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("main.rs"));
         assert!(resp.stdout.contains("lib.rs"));
@@ -1241,12 +1343,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         create_find_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "find".into(),
             args: vec![".".into(), "-iname".into(), "readme*".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("README.md"));
     }
@@ -1256,12 +1359,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         create_find_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "find".into(),
             args: vec![".".into(), "-type".into(), "f".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Should not contain directory entries
         let lines: Vec<&str> = resp.stdout.trim().lines().collect();
@@ -1277,12 +1381,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         create_find_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "find".into(),
             args: vec![".".into(), "-type".into(), "d".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("src"));
         assert!(resp.stdout.contains("tests"));
@@ -1295,12 +1400,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         create_find_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "find".into(),
             args: vec![".".into(), "-name".into(), "*.rs".into(), "-type".into(), "f".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("main.rs"));
         assert!(!resp.stdout.contains("README.md"));
@@ -1308,12 +1414,13 @@ mod tests {
 
     #[test]
     fn test_find_unsupported_flag_fallback() {
+        let tree = dummy_tree();
         let req = SearchRequest {
             command: "find".into(),
             args: vec![".".into(), "-maxdepth".into(), "2".into()],
             cwd: "/tmp".into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, FALLBACK_EXIT_CODE);
         assert!(resp.stderr.contains("unsupported find flags"));
     }
@@ -1321,12 +1428,13 @@ mod tests {
     #[test]
     fn test_find_nonexistent_dir() {
         let tmp = TempDir::new().unwrap();
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "find".into(),
             args: vec!["nonexistent_dir_xyz".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 1);
     }
 
@@ -1339,12 +1447,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         create_find_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "fd".into(),
             args: vec!["main".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("main.rs"));
         assert!(!resp.stdout.contains("lib.rs"));
@@ -1355,12 +1464,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         create_find_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "fd".into(),
             args: vec!["-e".into(), "rs".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("main.rs"));
         assert!(resp.stdout.contains("lib.rs"));
@@ -1373,12 +1483,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         create_find_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "fd".into(),
             args: vec!["-t".into(), "f".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("main.rs"));
         // Should not contain directories
@@ -1393,12 +1504,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         create_find_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "fd".into(),
             args: vec!["-t".into(), "d".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("src"));
         assert!(resp.stdout.contains("tests"));
@@ -1410,12 +1522,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         create_find_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "fd".into(),
             args: vec!["-i".into(), "readme".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("README.md"));
     }
@@ -1425,24 +1538,26 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         create_find_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "fd".into(),
             args: vec!["zzz_nonexistent".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 1);
         assert!(resp.stdout.is_empty());
     }
 
     #[test]
     fn test_fd_unsupported_flag_fallback() {
+        let tree = dummy_tree();
         let req = SearchRequest {
             command: "fd".into(),
             args: vec!["--hidden".into(), "pattern".into()],
             cwd: "/tmp".into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, FALLBACK_EXIT_CODE);
         assert!(resp.stderr.contains("unsupported fd flags"));
     }
@@ -1452,12 +1567,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         create_find_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "fd".into(),
             args: vec!["-e".into(), "rs".into(), "test".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("test_one.rs"));
         assert!(!resp.stdout.contains("main.rs"));
@@ -1468,16 +1584,87 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         create_find_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "fd".into(),
             args: vec!["main".into()],
             cwd: tmp.path().to_str().unwrap().into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Output should be relative path, not absolute
         let line = resp.stdout.trim();
         assert!(!line.starts_with('/'), "expected relative path, got: {}", line);
         assert!(line.contains("main.rs"));
+    }
+
+    #[test]
+    fn test_rg_bm25_output_has_scores() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("a.rs"), "hello world\nhello again\n").unwrap();
+        fs::write(tmp.path().join("b.rs"), "just hello\nsome other text\nmore padding\n").unwrap();
+
+        let tree = test_tree(tmp.path());
+        let req = SearchRequest {
+            command: "rg".into(),
+            args: vec!["--bm25".into(), "hello".into(), ".".into()],
+            cwd: tmp.path().to_str().unwrap().into(),
+        };
+        let resp = dispatch(&req, &tree);
+        assert_eq!(resp.exit_code, 0);
+        for line in resp.stdout.lines() {
+            assert!(line.starts_with('['), "line should start with [score]: {}", line);
+            assert!(line.contains(']'), "line should contain ]: {}", line);
+        }
+    }
+
+    #[test]
+    fn test_rg_without_bm25_no_scores() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("a.rs"), "hello world\n").unwrap();
+
+        let tree = test_tree(tmp.path());
+        let req = SearchRequest {
+            command: "rg".into(),
+            args: vec!["hello".into(), ".".into()],
+            cwd: tmp.path().to_str().unwrap().into(),
+        };
+        let resp = dispatch(&req, &tree);
+        assert_eq!(resp.exit_code, 0);
+        assert!(!resp.stdout.starts_with('['), "should not have [score] prefix without --bm25");
+    }
+
+    #[test]
+    fn test_rg_bm25_json_has_score_field() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("a.rs"), "hello world\n").unwrap();
+
+        let tree = test_tree(tmp.path());
+        let req = SearchRequest {
+            command: "rg".into(),
+            args: vec!["--json".into(), "--bm25".into(), "hello".into(), ".".into()],
+            cwd: tmp.path().to_str().unwrap().into(),
+        };
+        let resp = dispatch(&req, &tree);
+        assert_eq!(resp.exit_code, 0);
+        assert!(resp.stdout.contains("bm25_score"), "JSON should contain bm25_score field");
+    }
+
+    #[test]
+    fn test_grep_bm25_output_has_scores() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("a.txt"), "hello world\nhello again\n").unwrap();
+
+        let tree = test_tree(tmp.path());
+        let req = SearchRequest {
+            command: "grep".into(),
+            args: vec!["-r".into(), "--bm25".into(), "hello".into(), ".".into()],
+            cwd: tmp.path().to_str().unwrap().into(),
+        };
+        let resp = dispatch(&req, &tree);
+        assert_eq!(resp.exit_code, 0);
+        for line in resp.stdout.lines() {
+            assert!(line.starts_with('['), "line should start with [score]: {}", line);
+        }
     }
 }

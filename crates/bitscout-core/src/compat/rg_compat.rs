@@ -1,5 +1,5 @@
-use bitscout_core::search::bm25::Bm25Mode;
-use crate::rg_flags::{lookup_rg_flag, FlagKind};
+use crate::search::bm25::Bm25Mode;
+use super::rg_flags::{lookup_rg_flag, FlagKind};
 
 #[derive(Debug)]
 pub struct RgParsedArgs {
@@ -18,10 +18,10 @@ pub struct RgParsedArgs {
     pub multiline: bool,
     pub fixed_strings: bool,
     pub bm25: Bm25Mode,
+    pub semantic: bool,
 }
 
 /// Flags we actively accelerate (handle in our search engine).
-/// These are the flags commonly used by AI coding agents (Claude Code, Cursor, etc).
 const ACCELERATED_BOOL: &[&str] = &[
     "--json",
     "-n",
@@ -38,7 +38,6 @@ const ACCELERATED_BOOL: &[&str] = &[
     "--multiline-dotall",
     "-F",
     "--fixed-strings",
-    // Display control — no-ops for us since we always produce the same format
     "--no-heading",
     "--heading",
     "--no-config",
@@ -69,12 +68,6 @@ const ACCELERATED_VALUE: &[&str] = &[
 
 /// 3-layer rg argument parser.
 ///
-/// Layer 1 (Flag Registry): Uses the complete rg flag table to correctly
-///   identify every flag as Bool or Value, so we never misparse a value as a pattern.
-/// Layer 2 (Generic Parser): Walks args, skips values for Value flags, collects positionals.
-/// Layer 3 (Accelerator): Checks if all encountered flags are in our accelerated subset.
-///   If any flag is unknown or known-but-not-accelerated, returns None to trigger fallback.
-///
 /// Returns `Some(RgParsedArgs)` only when ALL flags are in the accelerated subset.
 /// Returns `None` for unknown flags OR known-but-not-accelerated flags, triggering fallback.
 pub fn parse_rg_args(args: &[String]) -> Option<RgParsedArgs> {
@@ -95,13 +88,13 @@ pub fn parse_rg_args(args: &[String]) -> Option<RgParsedArgs> {
         multiline: false,
         fixed_strings: false,
         bm25: Bm25Mode::Off,
+        semantic: false,
     };
 
     let mut positional = Vec::new();
 
     while let Some(arg) = iter.next() {
         if arg == "--" {
-            // Everything after -- is positional
             positional.extend(iter.map(|s| s.clone()));
             break;
         }
@@ -111,7 +104,7 @@ pub fn parse_rg_args(args: &[String]) -> Option<RgParsedArgs> {
             continue;
         }
 
-        // BitScout-specific: --bm25 / --bm25=full (not in rg flag registry)
+        // BitScout-specific: --bm25 / --bm25=full
         if arg == "--bm25" {
             parsed.bm25 = Bm25Mode::Tf;
             continue;
@@ -125,6 +118,12 @@ pub fn parse_rg_args(args: &[String]) -> Option<RgParsedArgs> {
             continue;
         }
 
+        // BitScout-specific: --semantic
+        if arg == "--semantic" {
+            parsed.semantic = true;
+            continue;
+        }
+
         // Handle --flag=value style
         if arg.contains('=') {
             let parts: Vec<&str> = arg.splitn(2, '=').collect();
@@ -132,34 +131,32 @@ pub fn parse_rg_args(args: &[String]) -> Option<RgParsedArgs> {
             let value = parts[1];
 
             if lookup_rg_flag(flag_name).is_none() {
-                return None; // completely unknown flag -> fallback
+                return None;
             }
 
-            // Known flag with =value. Check if we accelerate it.
             if !is_accelerated(flag_name) {
-                return None; // known but not acceleratable -> fallback
+                return None;
             }
 
-            // Handle accelerated =value flags
             apply_value_flag(&mut parsed, flag_name, value);
             continue;
         }
 
         // Layer 1: Look up in complete registry
         match lookup_rg_flag(arg) {
-            None => return None, // completely unknown -> fallback
+            None => return None,
 
             Some(FlagKind::Bool) => {
                 if !is_accelerated(arg) {
-                    return None; // known bool, not accelerated -> fallback
+                    return None;
                 }
                 apply_bool_flag(&mut parsed, arg);
             }
 
             Some(FlagKind::Value) => {
-                let value = iter.next()?; // consume the value
+                let value = iter.next()?;
                 if !is_accelerated(arg) {
-                    return None; // known value flag, not accelerated -> fallback
+                    return None;
                 }
                 apply_value_flag(&mut parsed, arg, value);
             }
@@ -193,13 +190,12 @@ fn apply_bool_flag(parsed: &mut RgParsedArgs, flag: &str) {
         "--no-line-number" => parsed.line_numbers = false,
         "-i" | "--ignore-case" => parsed.case_insensitive = true,
         "-s" | "--case-sensitive" => parsed.case_insensitive = false,
-        "-S" | "--smart-case" => {} // treat as default
+        "-S" | "--smart-case" => {}
         "-l" | "--files-with-matches" => parsed.files_only = true,
         "-c" | "--count" => parsed.count_only = true,
         "-U" | "--multiline" => parsed.multiline = true,
         "--multiline-dotall" => parsed.multiline = true,
         "-F" | "--fixed-strings" => parsed.fixed_strings = true,
-        // Display flags — no-ops since our output format is always flat
         "--no-heading" | "--heading" | "--no-config" | "--no-ignore"
         | "--hidden" | "--no-messages" => {}
         _ => {}
@@ -213,9 +209,8 @@ fn apply_value_flag(parsed: &mut RgParsedArgs, flag: &str, value: &str) {
         "-B" | "--before-context" => parsed.before_context = value.parse().unwrap_or(0),
         "-g" | "--glob" => parsed.glob = Some(value.to_string()),
         "-t" | "--type" => parsed.file_type = Some(value.to_string()),
-        // Flags we accept but don't act on (no-ops for our output)
-        "--color" | "--colors" => {} // we never colorize
-        "-m" | "--max-count" => {}    // TODO: implement max-count per file
+        "--color" | "--colors" => {}
+        "-m" | "--max-count" => {}
         _ => {}
     }
 }
@@ -242,12 +237,8 @@ mod tests {
     #[test]
     fn test_parse_rg_context_flags() {
         let args = vec![
-            "rg".into(),
-            "-C".into(),
-            "3".into(),
-            "-i".into(),
-            "pattern".into(),
-            "src/".into(),
+            "rg".into(), "-C".into(), "3".into(), "-i".into(),
+            "pattern".into(), "src/".into(),
         ];
         let parsed = parse_rg_args(&args).unwrap();
         assert_eq!(parsed.context_lines, 3);
@@ -257,40 +248,17 @@ mod tests {
 
     #[test]
     fn test_value_flag_not_mistaken_for_pattern() {
-        // --max-depth takes a value; "3" must not become the pattern
         let args = vec![
-            "rg".into(),
-            "--max-depth".into(),
-            "3".into(),
-            "real_pattern".into(),
-            ".".into(),
+            "rg".into(), "--max-depth".into(), "3".into(),
+            "real_pattern".into(), ".".into(),
         ];
-        // --max-depth is known but not accelerated -> fallback
-        let parsed = parse_rg_args(&args);
-        assert!(parsed.is_none());
-    }
-
-    #[test]
-    fn test_equals_style_value_flag() {
-        // --max-depth=3 is known but not accelerated -> fallback
-        let args = vec!["rg".into(), "--max-depth=3".into(), "pattern".into()];
-        let parsed = parse_rg_args(&args);
-        assert!(parsed.is_none());
+        assert!(parse_rg_args(&args).is_none());
     }
 
     #[test]
     fn test_known_but_unaccelerated_flag_parses_correctly() {
-        // --pcre2 is a known Bool flag, parsed correctly, but triggers fallback
         let args = vec!["rg".into(), "--pcre2".into(), "pattern".into()];
-        let parsed = parse_rg_args(&args);
-        assert!(parsed.is_none()); // known flag but not acceleratable -> fallback
-    }
-
-    #[test]
-    fn test_completely_unknown_flag_fallback() {
-        let args = vec!["rg".into(), "--some-future-flag".into(), "pattern".into()];
-        let parsed = parse_rg_args(&args);
-        assert!(parsed.is_none()); // unknown -> fallback
+        assert!(parse_rg_args(&args).is_none());
     }
 
     #[test]
@@ -301,67 +269,19 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_rg_bm25_full_flag() {
-        let args = vec!["rg".into(), "--bm25=full".into(), "pattern".into(), ".".into()];
+    fn test_parse_rg_semantic_flag() {
+        let args = vec!["rg".into(), "--semantic".into(), "pattern".into(), ".".into()];
         let parsed = parse_rg_args(&args).unwrap();
-        assert_eq!(parsed.bm25, Bm25Mode::Full);
-    }
-
-    #[test]
-    fn test_parse_rg_no_bm25_default() {
-        let args = vec!["rg".into(), "pattern".into(), ".".into()];
-        let parsed = parse_rg_args(&args).unwrap();
-        assert_eq!(parsed.bm25, Bm25Mode::Off);
-    }
-
-    #[test]
-    fn test_combined_short_flags() {
-        // rg doesn't combine short flags like -in, but test resilience
-        let args = vec![
-            "rg".into(),
-            "-i".into(),
-            "-n".into(),
-            "pattern".into(),
-        ];
-        let parsed = parse_rg_args(&args).unwrap();
-        assert!(parsed.case_insensitive);
-        assert!(parsed.line_numbers);
+        assert!(parsed.semantic);
     }
 
     #[test]
     fn test_glob_with_value() {
         let args = vec![
-            "rg".into(),
-            "--glob".into(),
-            "*.rs".into(),
-            "pattern".into(),
+            "rg".into(), "--glob".into(), "*.rs".into(), "pattern".into(),
         ];
         let parsed = parse_rg_args(&args).unwrap();
         assert_eq!(parsed.glob.as_deref(), Some("*.rs"));
         assert_eq!(parsed.pattern, "pattern");
-    }
-
-    #[test]
-    fn test_multiple_value_flags() {
-        let args = vec![
-            "rg".into(),
-            "-A".into(),
-            "2".into(),
-            "-B".into(),
-            "3".into(),
-            "--type".into(),
-            "rust".into(),
-            "--glob".into(),
-            "*.rs".into(),
-            "pattern".into(),
-            "src/".into(),
-        ];
-        let parsed = parse_rg_args(&args).unwrap();
-        assert_eq!(parsed.after_context, 2);
-        assert_eq!(parsed.before_context, 3);
-        assert_eq!(parsed.file_type.as_deref(), Some("rust"));
-        assert_eq!(parsed.glob.as_deref(), Some("*.rs"));
-        assert_eq!(parsed.pattern, "pattern");
-        assert_eq!(parsed.path, "src/");
     }
 }

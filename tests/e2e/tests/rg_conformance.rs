@@ -6,13 +6,13 @@
 //! The tests verify that BitScout is a drop-in replacement: any tool (Claude Code,
 //! Cursor, etc.) calling rg will see the same results from BitScout.
 
-use bitscout_core::protocol::SearchRequest;
-use bitscout_daemon::dispatch::{dispatch, FALLBACK_EXIT_CODE};
+use bitscout_core::dispatch::{dispatch, FALLBACK_EXIT_CODE};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
+
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -53,7 +53,7 @@ fn real_rg_path() -> Option<String> {
 fn run_real_rg(rg_path: &str, args: &[&str], dir: &Path) -> (i32, String, String) {
     let output = Command::new(rg_path)
         .args(args)
-        .arg(dir)
+        .current_dir(dir)
         .output()
         .expect("Failed to run rg");
     let code = output.status.code().unwrap_or(-1);
@@ -64,12 +64,9 @@ fn run_real_rg(rg_path: &str, args: &[&str], dir: &Path) -> (i32, String, String
 
 /// Run BitScout dispatch with the same rg args.
 fn run_bitscout_rg(args: &[&str], dir: &Path) -> (i32, String, String) {
-    let req = SearchRequest {
-        command: "rg".into(),
-        args: args.iter().map(|s| s.to_string()).collect(),
-        cwd: dir.to_str().unwrap().into(),
-    };
-    let resp = dispatch(&req);
+    let cwd = dir.to_str().unwrap();
+    let args_owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+    let resp = dispatch("rg", &args_owned, cwd);
     (resp.exit_code, resp.stdout, resp.stderr)
 }
 
@@ -91,6 +88,10 @@ fn normalize_lines(output: &str, dir: &Path) -> BTreeSet<String> {
             // Replace both canonical and original paths
             s = s.replace(canonical_str, "<DIR>");
             s = s.replace(dir_str, "<DIR>");
+            // Normalize relative "./" prefix to "<DIR>/" for consistency
+            if s.starts_with("./") {
+                s = format!("<DIR>/{}", &s[2..]);
+            }
             // Normalize path separators
             s = s.replace("//", "/");
             s
@@ -509,9 +510,12 @@ fn test_rg_json_output_conformance() {
                 let line_num = v["data"]["line_number"].as_u64()?;
                 let lines_text = v["data"]["lines"]["text"].as_str()?;
                 // Normalize: strip path prefix and trailing newline
-                let norm_path = path
+                let mut norm_path = path
                     .replace(tmp.path().canonicalize().unwrap().to_str().unwrap(), "<DIR>")
                     .replace(tmp.path().to_str().unwrap(), "<DIR>");
+                if norm_path.starts_with("./") {
+                    norm_path = format!("<DIR>/{}", &norm_path[2..]);
+                }
                 Some(format!(
                     "{}:{}:{}",
                     norm_path,
@@ -533,9 +537,12 @@ fn test_rg_json_output_conformance() {
                 let path = v["data"]["path"]["text"].as_str()?;
                 let line_num = v["data"]["line_number"].as_u64()?;
                 let lines_text = v["data"]["lines"]["text"].as_str()?;
-                let norm_path = path
+                let mut norm_path = path
                     .replace(tmp.path().canonicalize().unwrap().to_str().unwrap(), "<DIR>")
                     .replace(tmp.path().to_str().unwrap(), "<DIR>");
+                if norm_path.starts_with("./") {
+                    norm_path = format!("<DIR>/{}", &norm_path[2..]);
+                }
                 Some(format!(
                     "{}:{}:{}",
                     norm_path,
@@ -593,8 +600,12 @@ fn test_rg_context_conformance() {
                 parts.len() == 3 && parts[1].parse::<usize>().is_ok()
             })
             .map(|l| {
-                l.replace(dir_s, "<DIR>")
-                    .replace(tmp.path().to_str().unwrap(), "<DIR>")
+                let mut s = l.replace(dir_s, "<DIR>")
+                    .replace(tmp.path().to_str().unwrap(), "<DIR>");
+                if s.starts_with("./") {
+                    s = format!("<DIR>/{}", &s[2..]);
+                }
+                s
             })
             .collect()
     };

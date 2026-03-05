@@ -3,6 +3,8 @@
 /// Supports the subset of GNU grep flags commonly used by AI coding agents.
 /// Unsupported flags cause a fallback to the real grep binary.
 
+use bitscout_core::search::bm25::Bm25Mode;
+
 #[derive(Debug, Clone)]
 pub struct GrepParsedArgs {
     pub pattern: String,
@@ -14,6 +16,8 @@ pub struct GrepParsedArgs {
     pub show_filename: Option<bool>, // None = auto (multi-file => show)
     pub word_regexp: bool,
     pub include_glob: Option<String>,
+    pub fixed_strings: bool,
+    pub bm25: Bm25Mode,
 }
 
 /// Known grep boolean flags that we accelerate.
@@ -34,6 +38,8 @@ const KNOWN_BOOL: &[&str] = &[
     "--no-filename",
     "-w",
     "--word-regexp",
+    "-F",
+    "--fixed-strings",
 ];
 
 /// Parse grep-style arguments.
@@ -51,6 +57,8 @@ pub fn parse_grep_args(args: &[String]) -> Option<GrepParsedArgs> {
         show_filename: None,
         word_regexp: false,
         include_glob: None,
+        fixed_strings: false,
+        bm25: Bm25Mode::Off,
     };
 
     let mut positional = Vec::new();
@@ -65,6 +73,20 @@ pub fn parse_grep_args(args: &[String]) -> Option<GrepParsedArgs> {
 
         if arg == "--" {
             seen_double_dash = true;
+            continue;
+        }
+
+        // BitScout-specific: --bm25 / --bm25=full
+        if arg == "--bm25" {
+            parsed.bm25 = Bm25Mode::Tf;
+            continue;
+        }
+        if arg.starts_with("--bm25=") {
+            let value = &arg["--bm25=".len()..];
+            parsed.bm25 = match value {
+                "full" => Bm25Mode::Full,
+                _ => Bm25Mode::Tf,
+            };
             continue;
         }
 
@@ -138,6 +160,7 @@ fn apply_bool_flag(parsed: &mut GrepParsedArgs, flag: &str) {
         "-H" => parsed.show_filename = Some(true),
         "-h" | "--no-filename" => parsed.show_filename = Some(false),
         "-w" | "--word-regexp" => parsed.word_regexp = true,
+        "-F" | "--fixed-strings" => parsed.fixed_strings = true,
         _ => {}
     }
 }
@@ -244,6 +267,22 @@ mod tests {
         let parsed = parse_grep_args(&args).unwrap();
         assert_eq!(parsed.show_filename, Some(true));
         assert!(should_show_filename(&parsed));
+    }
+
+    #[test]
+    fn test_parse_grep_bm25_flag() {
+        let args: Vec<String> = vec!["grep", "-r", "--bm25", "pattern", "."]
+            .into_iter().map(Into::into).collect();
+        let parsed = parse_grep_args(&args).unwrap();
+        assert_eq!(parsed.bm25, Bm25Mode::Tf);
+    }
+
+    #[test]
+    fn test_parse_grep_bm25_full() {
+        let args: Vec<String> = vec!["grep", "-r", "--bm25=full", "pattern"]
+            .into_iter().map(Into::into).collect();
+        let parsed = parse_grep_args(&args).unwrap();
+        assert_eq!(parsed.bm25, Bm25Mode::Full);
     }
 
     #[test]

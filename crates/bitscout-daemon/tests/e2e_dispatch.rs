@@ -6,10 +6,24 @@
 //! Each test creates a temporary directory with known files and verifies that
 //! dispatch produces the correct exit code, stdout, and stderr.
 
+use bitscout_core::fs::tree::FileTree;
 use bitscout_core::protocol::SearchRequest;
 use bitscout_daemon::dispatch::{dispatch, FALLBACK_EXIT_CODE};
 use std::fs;
+use std::path::Path;
+use std::sync::{Arc, RwLock};
 use tempfile::TempDir;
+
+fn test_tree(root: &Path) -> Arc<RwLock<FileTree>> {
+    Arc::new(RwLock::new(FileTree::scan(root).unwrap()))
+}
+
+fn dummy_tree() -> Arc<RwLock<FileTree>> {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().to_path_buf();
+    std::mem::forget(tmp);
+    Arc::new(RwLock::new(FileTree::scan(&path).unwrap()))
+}
 
 // ---------------------------------------------------------------------------
 // Test fixture helpers
@@ -96,12 +110,13 @@ mod rg {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "rg".into(),
             args: args(&["hello", "."]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("hello"), "stdout: {}", resp.stdout);
         // Should include the file path
@@ -113,12 +128,13 @@ mod rg {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "rg".into(),
             args: args(&["-n", "hello", "."]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Format: path:line_number:content
         assert!(
@@ -133,12 +149,13 @@ mod rg {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "rg".into(),
             args: args(&["-c", "fn", "."]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Format: path:count
         // main.rs has 1 "fn", lib.rs has 1 "fn", utils.rs has 1 "fn"
@@ -159,12 +176,13 @@ mod rg {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "rg".into(),
             args: args(&["-l", "fn", "."]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Each line should be a file path, no colons (no line content)
         let lines: Vec<&str> = resp.stdout.trim().lines().collect();
@@ -185,12 +203,13 @@ mod rg {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "rg".into(),
             args: args(&["--json", "hello", "."]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Each line should be valid JSON with "type": "match"
         for line in resp.stdout.trim().lines() {
@@ -204,12 +223,13 @@ mod rg {
 
     #[test]
     fn unsupported_flags_return_fallback() {
+        let tree = dummy_tree();
         let req = SearchRequest {
             command: "rg".into(),
             args: args(&["--pcre2", "pattern", "."]),
             cwd: "/tmp".into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, FALLBACK_EXIT_CODE);
         assert!(resp.stderr.contains("BITSCOUT_FALLBACK"));
     }
@@ -219,12 +239,13 @@ mod rg {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "rg".into(),
             args: args(&["zzz_nonexistent_pattern_xyz", "."]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 1);
         assert!(resp.stdout.is_empty());
     }
@@ -234,12 +255,13 @@ mod rg {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "rg".into(),
             args: args(&["-i", "HELLO", "."]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("hello"), "stdout: {}", resp.stdout);
     }
@@ -257,12 +279,13 @@ mod grep {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: args(&["-r", "hello", "."]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("hello"), "stdout: {}", resp.stdout);
         // Default shows filename
@@ -274,12 +297,13 @@ mod grep {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: args(&["-rn", "hello", "."]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Format: path:line_number:content
         assert!(
@@ -294,12 +318,13 @@ mod grep {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: args(&["-rc", "fn", "."]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Format: path:count
         for line in resp.stdout.trim().lines() {
@@ -312,12 +337,13 @@ mod grep {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: args(&["-rl", "fn", "."]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         let lines: Vec<&str> = resp.stdout.trim().lines().collect();
         assert!(lines.len() >= 3, "expected at least 3 files: {:?}", lines);
@@ -328,12 +354,13 @@ mod grep {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: args(&["-ri", "HELLO", "."]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("hello"), "stdout: {}", resp.stdout);
     }
@@ -343,24 +370,26 @@ mod grep {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: args(&["-r", "zzz_nonexistent_xyz", "."]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 1);
         assert!(resp.stdout.is_empty());
     }
 
     #[test]
     fn unsupported_flag_returns_fallback() {
+        let tree = dummy_tree();
         let req = SearchRequest {
             command: "grep".into(),
             args: args(&["-P", "pattern", "."]),
             cwd: "/tmp".into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, FALLBACK_EXIT_CODE);
         assert!(resp.stderr.contains("BITSCOUT_FALLBACK"));
     }
@@ -370,12 +399,13 @@ mod grep {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: args(&["-r", "--include=*.rs", "fn", "."]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains(".rs"), "stdout: {}", resp.stdout);
         assert!(!resp.stdout.contains(".md"), "should not match .md files: {}", resp.stdout);
@@ -387,12 +417,13 @@ mod grep {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: args(&["-rh", "hello", "."]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Output should not contain file paths
         assert!(!resp.stdout.contains("main.rs"), "stdout: {}", resp.stdout);
@@ -405,12 +436,13 @@ mod grep {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "grep".into(),
             args: args(&["-rin", "HELLO", "."]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // case insensitive + line numbers
         assert!(resp.stdout.contains("hello"), "stdout: {}", resp.stdout);
@@ -435,12 +467,13 @@ mod find {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "find".into(),
             args: args(&["."]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("main.rs"), "stdout: {}", resp.stdout);
         assert!(resp.stdout.contains("README.md"), "stdout: {}", resp.stdout);
@@ -454,12 +487,13 @@ mod find {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "find".into(),
             args: args(&[".", "-name", "*.rs"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("main.rs"), "stdout: {}", resp.stdout);
         assert!(resp.stdout.contains("lib.rs"), "stdout: {}", resp.stdout);
@@ -475,12 +509,13 @@ mod find {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "find".into(),
             args: args(&[".", "-type", "f"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("main.rs"), "stdout: {}", resp.stdout);
         // Directories should not appear as standalone entries
@@ -506,12 +541,13 @@ mod find {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "find".into(),
             args: args(&[".", "-type", "d"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("src"), "stdout: {}", resp.stdout);
         assert!(resp.stdout.contains("tests"), "stdout: {}", resp.stdout);
@@ -526,12 +562,13 @@ mod find {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "find".into(),
             args: args(&[".", "-name", "*.md", "-type", "f"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("README.md"), "stdout: {}", resp.stdout);
         assert!(resp.stdout.contains("guide.md"), "stdout: {}", resp.stdout);
@@ -543,12 +580,13 @@ mod find {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "find".into(),
             args: args(&[".", "-iname", "readme*"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("README.md"), "stdout: {}", resp.stdout);
     }
@@ -557,24 +595,26 @@ mod find {
     fn nonexistent_dir_returns_error() {
         let tmp = TempDir::new().unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "find".into(),
             args: args(&["nonexistent_dir_xyz"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 1);
         assert!(!resp.stderr.is_empty(), "stderr should contain error");
     }
 
     #[test]
     fn unsupported_flag_returns_fallback() {
+        let tree = dummy_tree();
         let req = SearchRequest {
             command: "find".into(),
             args: args(&[".", "-maxdepth", "2"]),
             cwd: "/tmp".into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, FALLBACK_EXIT_CODE);
         assert!(resp.stderr.contains("BITSCOUT_FALLBACK"));
     }
@@ -584,12 +624,13 @@ mod find {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "find".into(),
             args: args(&[".", "-name", "main.rs"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         let line = resp.stdout.trim();
         // Should be relative, like ./src/main.rs
@@ -613,12 +654,13 @@ mod fd {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "fd".into(),
             args: args(&["main"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("main.rs"), "stdout: {}", resp.stdout);
         // Should not contain files that don't match
@@ -630,12 +672,13 @@ mod fd {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "fd".into(),
             args: args(&["-e", "rs"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("main.rs"), "stdout: {}", resp.stdout);
         assert!(resp.stdout.contains("lib.rs"), "stdout: {}", resp.stdout);
@@ -648,12 +691,13 @@ mod fd {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "fd".into(),
             args: args(&["-t", "f"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("main.rs"), "stdout: {}", resp.stdout);
         // Directories should not appear
@@ -672,12 +716,13 @@ mod fd {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "fd".into(),
             args: args(&["-t", "d"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("src"), "stdout: {}", resp.stdout);
         assert!(resp.stdout.contains("tests"), "stdout: {}", resp.stdout);
@@ -689,12 +734,13 @@ mod fd {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "fd".into(),
             args: args(&["-e", "rs", "test"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("test_add.rs"), "stdout: {}", resp.stdout);
         assert!(!resp.stdout.contains("main.rs"), "stdout: {}", resp.stdout);
@@ -705,12 +751,13 @@ mod fd {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "fd".into(),
             args: args(&["-i", "readme"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("README.md"), "stdout: {}", resp.stdout);
     }
@@ -720,24 +767,26 @@ mod fd {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "fd".into(),
             args: args(&["zzz_nonexistent_pattern_xyz"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 1);
         assert!(resp.stdout.is_empty());
     }
 
     #[test]
     fn unsupported_flag_returns_fallback() {
+        let tree = dummy_tree();
         let req = SearchRequest {
             command: "fd".into(),
             args: args(&["--hidden", "pattern"]),
             cwd: "/tmp".into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, FALLBACK_EXIT_CODE);
         assert!(resp.stderr.contains("BITSCOUT_FALLBACK"));
     }
@@ -747,12 +796,13 @@ mod fd {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "fd".into(),
             args: args(&["main"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         for line in resp.stdout.trim().lines() {
             assert!(
@@ -776,12 +826,13 @@ mod cat {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "cat".into(),
             args: args(&["README.md"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("# My Project"), "stdout: {}", resp.stdout);
         assert!(resp.stdout.contains("sample project"), "stdout: {}", resp.stdout);
@@ -793,12 +844,13 @@ mod cat {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "cat".into(),
             args: args(&["-n", "README.md"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         // Should contain line numbers and tab separator
         assert!(resp.stdout.contains("1\t"), "stdout: {}", resp.stdout);
@@ -810,12 +862,13 @@ mod cat {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "cat".into(),
             args: args(&["README.md", "config.json"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("# My Project"), "stdout: {}", resp.stdout);
         assert!(resp.stdout.contains("\"debug\""), "stdout: {}", resp.stdout);
@@ -825,12 +878,13 @@ mod cat {
     fn nonexistent_file_returns_exit_1() {
         let tmp = TempDir::new().unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "cat".into(),
             args: args(&["nonexistent_file.txt"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 1);
         assert!(
             resp.stderr.contains("nonexistent_file.txt"),
@@ -841,24 +895,26 @@ mod cat {
 
     #[test]
     fn no_files_returns_fallback() {
+        let tree = dummy_tree();
         let req = SearchRequest {
             command: "cat".into(),
             args: vec![],
             cwd: "/tmp".into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, FALLBACK_EXIT_CODE);
         assert!(resp.stderr.contains("no files specified"));
     }
 
     #[test]
     fn unsupported_flag_returns_fallback() {
+        let tree = dummy_tree();
         let req = SearchRequest {
             command: "cat".into(),
             args: args(&["-v", "file.txt"]),
             cwd: "/tmp".into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, FALLBACK_EXIT_CODE);
         assert!(resp.stderr.contains("unsupported cat flag"));
     }
@@ -869,12 +925,13 @@ mod cat {
         let file_path = tmp.path().join("absolute_test.txt");
         fs::write(&file_path, "absolute content\n").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "cat".into(),
             args: vec![file_path.to_str().unwrap().into()],
             cwd: "/tmp".into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert_eq!(resp.stdout, "absolute content\n");
     }
@@ -884,12 +941,13 @@ mod cat {
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("no_newline.txt"), "no trailing newline").unwrap();
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "cat".into(),
             args: args(&["no_newline.txt"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert_eq!(resp.stdout, "no trailing newline");
     }
@@ -899,12 +957,13 @@ mod cat {
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
 
+        let tree = test_tree(tmp.path());
         let req = SearchRequest {
             command: "cat".into(),
             args: args(&["src/main.rs"]),
             cwd: cwd(&tmp),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(resp.stdout.contains("fn main()"), "stdout: {}", resp.stdout);
     }
@@ -919,12 +978,13 @@ mod dispatch_meta {
 
     #[test]
     fn unknown_command_returns_fallback() {
+        let tree = dummy_tree();
         let req = SearchRequest {
             command: "unknown_cmd".into(),
             args: vec![],
             cwd: "/tmp".into(),
         };
-        let resp = dispatch(&req);
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, FALLBACK_EXIT_CODE);
         assert!(resp.stderr.contains("BITSCOUT_FALLBACK"));
         assert!(resp.stderr.contains("unknown command"));
@@ -935,29 +995,33 @@ mod dispatch_meta {
         let tmp = TempDir::new().unwrap();
         // Empty directory, no files to search
         fs::create_dir_all(tmp.path().join("empty")).unwrap();
+        let tree = test_tree(tmp.path());
 
         // rg with no matches
-        let resp = dispatch(&SearchRequest {
+        let req = SearchRequest {
             command: "rg".into(),
             args: args(&["pattern", "empty"]),
             cwd: cwd(&tmp),
-        });
+        };
+        let resp = dispatch(&req, &tree);
         assert!(resp.exit_code == 1 || resp.exit_code == 0);
 
         // grep with no matches
-        let resp = dispatch(&SearchRequest {
+        let req = SearchRequest {
             command: "grep".into(),
             args: args(&["-r", "pattern", "empty"]),
             cwd: cwd(&tmp),
-        });
+        };
+        let resp = dispatch(&req, &tree);
         assert!(resp.exit_code == 1 || resp.exit_code == 0);
 
         // find on empty dir returns just the dir itself (or empty)
-        let resp = dispatch(&SearchRequest {
+        let req = SearchRequest {
             command: "find".into(),
             args: args(&["empty"]),
             cwd: cwd(&tmp),
-        });
+        };
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
     }
 
@@ -967,22 +1031,25 @@ mod dispatch_meta {
         // and failed responses have non-empty stderr
         let tmp = TempDir::new().unwrap();
         create_test_tree(&tmp);
+        let tree = test_tree(tmp.path());
 
-        let resp = dispatch(&SearchRequest {
+        let req = SearchRequest {
             command: "rg".into(),
             args: args(&["fn", "."]),
             cwd: cwd(&tmp),
-        });
+        };
+        let resp = dispatch(&req, &tree);
         assert_eq!(resp.exit_code, 0);
         assert!(!resp.stdout.is_empty());
         assert!(resp.stderr.is_empty());
 
         // Error case
-        let resp = dispatch(&SearchRequest {
+        let req = SearchRequest {
             command: "cat".into(),
             args: args(&["does_not_exist.txt"]),
             cwd: cwd(&tmp),
-        });
+        };
+        let resp = dispatch(&req, &tree);
         assert_ne!(resp.exit_code, 0);
         assert!(!resp.stderr.is_empty());
     }

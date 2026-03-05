@@ -1,5 +1,8 @@
+use bitscout_core::fs::tree::FileTree;
+use bitscout_core::fs::watcher::FileWatcher;
 use bitscout_core::protocol::*;
 use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixListener;
@@ -8,14 +11,54 @@ pub struct DaemonServer {
     socket_path: PathBuf,
     watch_root: PathBuf,
     start_time: Instant,
+    tree: Arc<RwLock<FileTree>>,
+    _watcher: Option<FileWatcher>,
 }
 
 impl DaemonServer {
     pub fn new(socket_path: PathBuf, watch_root: PathBuf) -> Self {
+        // Build the initial hot index
+        let tree = match FileTree::scan(&watch_root) {
+            Ok(t) => {
+                eprintln!("Hot index: {} files indexed", t.file_count());
+                t
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to scan {}: {}", watch_root.display(), e);
+                // Fallback: empty tree — handlers will still work via per-request scan
+                FileTree::scan(std::env::temp_dir().as_path()).unwrap_or_else(|_| {
+                    panic!("cannot create fallback FileTree")
+                })
+            }
+        };
+
+        let tree = Arc::new(RwLock::new(tree));
+
+        // Start FileWatcher for incremental updates
+        let watcher = {
+            let tree_clone = Arc::clone(&tree);
+            match FileWatcher::start(&watch_root, move |event| {
+                if let Ok(mut t) = tree_clone.write() {
+                    t.apply_event(&event);
+                }
+            }) {
+                Ok(w) => {
+                    eprintln!("FileWatcher started for {:?}", watch_root);
+                    Some(w)
+                }
+                Err(e) => {
+                    eprintln!("Warning: FileWatcher failed to start: {}", e);
+                    None
+                }
+            }
+        };
+
         Self {
             socket_path,
             watch_root,
             start_time: Instant::now(),
+            tree,
+            _watcher: watcher,
         }
     }
 
@@ -34,10 +77,10 @@ impl DaemonServer {
         loop {
             let (stream, _addr) = listener.accept().await?;
             let start_time = self.start_time;
-            let watch_root = self.watch_root.clone();
+            let tree = Arc::clone(&self.tree);
 
             tokio::spawn(async move {
-                if let Err(e) = handle_connection(stream, start_time, &watch_root).await {
+                if let Err(e) = handle_connection(stream, start_time, &tree).await {
                     eprintln!("Connection error: {}", e);
                 }
             });
@@ -48,7 +91,7 @@ impl DaemonServer {
 async fn handle_connection(
     mut stream: tokio::net::UnixStream,
     start_time: Instant,
-    _watch_root: &PathBuf,
+    tree: &Arc<RwLock<FileTree>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     loop {
         // Read 4-byte big-endian length prefix
@@ -69,16 +112,17 @@ async fn handle_connection(
 
         let response = match request {
             DaemonRequest::Status => {
+                let files_indexed = tree.read().map(|t| t.file_count()).unwrap_or(0);
                 let uptime = start_time.elapsed();
                 DaemonResponse::Status(StatusInfo {
                     pid: std::process::id(),
                     uptime_secs: uptime.as_secs(),
-                    files_indexed: 0,
+                    files_indexed,
                     cache_size_bytes: 0,
                 })
             }
             DaemonRequest::Search(req) => {
-                let response = bitscout_daemon::dispatch::dispatch(&req);
+                let response = bitscout_daemon::dispatch::dispatch(&req, tree);
                 DaemonResponse::SearchResult(response)
             }
             DaemonRequest::Shutdown => {
@@ -140,7 +184,8 @@ mod tests {
         match response {
             DaemonResponse::Status(info) => {
                 assert_eq!(info.pid, std::process::id());
-                assert_eq!(info.files_indexed, 0);
+                // files_indexed reflects the hot index (may include socket file)
+                assert!(info.uptime_secs < 10);
                 assert_eq!(info.cache_size_bytes, 0);
             }
             other => panic!("Expected Status response, got {:?}", other),

@@ -1,11 +1,11 @@
 //! cat conformance tests: compare real `cat` output with BitScout dispatch output.
 
-use bitscout_core::protocol::SearchRequest;
-use bitscout_daemon::dispatch::{dispatch, FALLBACK_EXIT_CODE};
+use bitscout_core::dispatch::{dispatch, FALLBACK_EXIT_CODE};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
+
 
 fn real_cat_path() -> &'static str {
     "/bin/cat"
@@ -24,12 +24,9 @@ fn run_real_cat(args: &[&str]) -> (i32, String, String) {
 }
 
 fn run_bitscout_cat(args: &[&str], cwd: &Path) -> (i32, String, String) {
-    let req = SearchRequest {
-        command: "cat".into(),
-        args: args.iter().map(|s| s.to_string()).collect(),
-        cwd: cwd.to_str().unwrap().into(),
-    };
-    let resp = dispatch(&req);
+    let cwd_str = cwd.to_str().unwrap();
+    let args_owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+    let resp = dispatch("cat", &args_owned, cwd_str);
     (resp.exit_code, resp.stdout, resp.stderr)
 }
 

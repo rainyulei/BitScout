@@ -11,6 +11,7 @@ pub struct FileEntry {
     pub is_dir: bool,
 }
 
+#[derive(Clone)]
 pub struct FileTree {
     root: PathBuf,
     entries: Vec<FileEntry>,
@@ -100,11 +101,9 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let root = tmp.path();
 
-        // Create 2 files at root level
         fs::write(root.join("a.txt"), "hello").unwrap();
         fs::write(root.join("b.rs"), "fn main() {}").unwrap();
 
-        // Create a nested file
         fs::create_dir_all(root.join("sub")).unwrap();
         fs::write(root.join("sub/c.txt"), "nested").unwrap();
 
@@ -122,13 +121,8 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let root = tmp.path();
 
-        // Write a .gitignore that excludes *.log and target/
         fs::write(root.join(".gitignore"), "*.log\ntarget/\n").unwrap();
-
-        // Create files that should be included
         fs::write(root.join("main.rs"), "fn main() {}").unwrap();
-
-        // Create files that should be excluded
         fs::write(root.join("debug.log"), "log data").unwrap();
         fs::create_dir_all(root.join("target")).unwrap();
         fs::write(root.join("target/output.bin"), "binary").unwrap();
@@ -137,9 +131,7 @@ mod tests {
 
         let names: Vec<&str> = tree.files().iter().map(|f| f.name.as_str()).collect();
         assert!(names.contains(&"main.rs"));
-        // .gitignore itself is a file, so it shows up
         assert!(names.contains(&".gitignore"));
-        // These should be excluded
         assert!(!names.contains(&"debug.log"));
         assert!(!names.contains(&"output.bin"));
     }

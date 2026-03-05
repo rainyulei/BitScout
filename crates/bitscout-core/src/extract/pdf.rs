@@ -4,8 +4,16 @@ pub fn extract_pdf(data: &[u8]) -> Result<String, crate::Error> {
         return Err(crate::Error::Extract("empty PDF data".into()));
     }
 
-    let text = pdf_extract::extract_text_from_mem(data)
-        .map_err(|e| crate::Error::Extract(format!("PDF extraction failed: {e}")))?;
+    // pdf-extract / cff-parser can panic on certain PDFs, so catch it
+    let result = std::panic::catch_unwind(|| {
+        pdf_extract::extract_text_from_mem(data)
+    });
+
+    let text = match result {
+        Ok(Ok(t)) => t,
+        Ok(Err(e)) => return Err(crate::Error::Extract(format!("PDF extraction failed: {e}"))),
+        Err(_) => return Err(crate::Error::Extract("PDF extraction panicked".into())),
+    };
 
     if text.trim().is_empty() {
         return Err(crate::Error::Extract("PDF contains no extractable text".into()));

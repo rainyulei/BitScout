@@ -29,6 +29,7 @@ pub struct FdParsedArgs {
     pub extension: Option<String>,
     pub entry_type: Option<EntryType>,
     pub ignore_case: bool,
+    pub fixed_strings: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -100,6 +101,7 @@ pub fn parse_fd_args(args: &[String]) -> Option<FdParsedArgs> {
         extension: None,
         entry_type: None,
         ignore_case: false,
+        fixed_strings: false,
     };
 
     let mut iter = args.iter().skip(1).peekable(); // skip argv[0]
@@ -116,6 +118,9 @@ pub fn parse_fd_args(args: &[String]) -> Option<FdParsedArgs> {
             }
             "-i" | "--ignore-case" => {
                 parsed.ignore_case = true;
+            }
+            "-F" | "--fixed-strings" => {
+                parsed.fixed_strings = true;
             }
             s if s.starts_with('-') => {
                 // Unsupported flag -> fallback

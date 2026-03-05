@@ -1,12 +1,12 @@
 //! find/fd conformance tests: compare real `find`/`fd` output with BitScout dispatch.
 
-use bitscout_core::protocol::SearchRequest;
-use bitscout_daemon::dispatch::{dispatch, FALLBACK_EXIT_CODE};
+use bitscout_core::dispatch::{dispatch, FALLBACK_EXIT_CODE};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
+
 
 fn real_find_path() -> Option<String> {
     for c in ["/usr/bin/find", "/opt/homebrew/bin/find"] {
@@ -53,12 +53,9 @@ fn run_real_cmd(cmd: &str, args: &[&str]) -> (i32, String, String) {
 }
 
 fn run_bitscout(cmd: &str, args: &[&str], cwd: &Path) -> (i32, String, String) {
-    let req = SearchRequest {
-        command: cmd.into(),
-        args: args.iter().map(|s| s.to_string()).collect(),
-        cwd: cwd.to_str().unwrap().into(),
-    };
-    let resp = dispatch(&req);
+    let cwd_str = cwd.to_str().unwrap();
+    let args_owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+    let resp = dispatch(cmd, &args_owned, cwd_str);
     (resp.exit_code, resp.stdout, resp.stderr)
 }
 

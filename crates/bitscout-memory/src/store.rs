@@ -71,6 +71,7 @@ impl MemoryStore {
             &[query],
             MatchOptions {
                 case_insensitive: true,
+                ..Default::default()
             },
         ) {
             Ok(m) => m,

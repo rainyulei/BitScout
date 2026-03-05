@@ -1,12 +1,12 @@
 //! grep conformance tests: compare real `grep` output with BitScout dispatch output.
 
-use bitscout_core::protocol::SearchRequest;
-use bitscout_daemon::dispatch::{dispatch, FALLBACK_EXIT_CODE};
+use bitscout_core::dispatch::{dispatch, FALLBACK_EXIT_CODE};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
+
 
 fn real_grep_path() -> Option<String> {
     for c in ["/usr/bin/grep", "/opt/homebrew/bin/grep", "/usr/local/bin/grep"] {
@@ -31,12 +31,9 @@ fn run_real_grep(grep_path: &str, args: &[&str]) -> (i32, String, String) {
 }
 
 fn run_bitscout_grep(args: &[&str], cwd: &Path) -> (i32, String, String) {
-    let req = SearchRequest {
-        command: "grep".into(),
-        args: args.iter().map(|s| s.to_string()).collect(),
-        cwd: cwd.to_str().unwrap().into(),
-    };
-    let resp = dispatch(&req);
+    let cwd_str = cwd.to_str().unwrap();
+    let args_owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+    let resp = dispatch("grep", &args_owned, cwd_str);
     (resp.exit_code, resp.stdout, resp.stderr)
 }
 
