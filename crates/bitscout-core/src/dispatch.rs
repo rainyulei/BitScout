@@ -540,6 +540,7 @@ fn handle_cat(args: &[String], cwd: &str) -> SearchResponse {
     for arg in args {
         match arg.as_str() {
             "-n" | "--number" => show_line_numbers = true,
+            "-" => return fallback_response("cat: stdin not supported, fallback"),
             s if s.starts_with('-') => {
                 return fallback_response(&format!("unsupported cat flag: {}", s));
             }
@@ -549,6 +550,14 @@ fn handle_cat(args: &[String], cwd: &str) -> SearchResponse {
 
     if files.is_empty() {
         return fallback_response("cat: no files specified");
+    }
+
+    // Fallback to system cat for special paths (e.g. /dev/fd/N, /dev/stdin, /proc/)
+    if files
+        .iter()
+        .any(|f| f.starts_with("/dev/") || f.starts_with("/proc/"))
+    {
+        return fallback_response("cat: special path, fallback");
     }
 
     let mut output = String::new();
